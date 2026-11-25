@@ -7,4 +7,18 @@ contextBridge.exposeInMainWorld('metatronDesktop', {
   platform: process.platform,
   openDataFolder: () => ipcRenderer.invoke('metatron:open-data-folder'),
   getNetworkInfo: () => ipcRenderer.invoke('metatron:get-network-info'),
+  updater: {
+    getState: () => ipcRenderer.invoke('metatron:updater-get-state'),
+    check: (repoSlug) => ipcRenderer.invoke('metatron:updater-check', repoSlug),
+    download: () => ipcRenderer.invoke('metatron:updater-download'),
+    installAndRestart: () => ipcRenderer.invoke('metatron:updater-install-restart'),
+    onStateChange: (callback) => {
+      if (typeof callback !== 'function') return () => {};
+      const handler = (_event, state) => callback(state);
+      ipcRenderer.on('metatron:update-state', handler);
+      return () => {
+        ipcRenderer.removeListener('metatron:update-state', handler);
+      };
+    },
+  },
 });

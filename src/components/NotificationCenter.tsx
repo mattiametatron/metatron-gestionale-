@@ -7,6 +7,7 @@ import {
   Bell,
   Calendar as CalendarIcon,
   CheckCheck,
+  DownloadCloud,
   ExternalLink,
   Send,
   Trash2,
@@ -71,6 +72,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
   const counts = useMemo(() => {
     const unread = notifications.filter((n) => !n.read).length;
     const byCat = {
+      system_update: notifications.filter((n) => n.category === 'system_update').length,
       message: notifications.filter((n) => n.category === 'message').length,
       low_stock: notifications.filter((n) => n.category === 'low_stock').length,
       stock_movement: notifications.filter((n) => n.category === 'stock_movement').length,
@@ -113,6 +115,12 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
               ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30'
               : 'bg-amber-500/20 text-amber-300 border-amber-400/30',
           label: 'Carico / Scarico',
+        };
+      case 'system_update':
+        return {
+          icon: DownloadCloud,
+          iconBg: 'bg-cyan-500/20 text-cyan-300 border-cyan-400/35',
+          label: 'Aggiornamento Sistema',
         };
       case 'alarm':
         return {
@@ -181,6 +189,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
         <div className="px-3 py-2 border-b border-white/[0.08] flex items-center gap-1 overflow-x-auto no-scrollbar shrink-0 bg-black/20">
           {[
             { id: 'all' as const, label: `Tutte (${notifications.length})` },
+            { id: 'system_update' as const, label: `Aggiornamenti (${counts.byCat.system_update})` },
             { id: 'message' as const, label: `File/Msg (${counts.byCat.message})` },
             { id: 'low_stock' as const, label: `Sotto Scorta (${counts.byCat.low_stock})` },
             { id: 'stock_movement' as const, label: `Movimenti (${counts.byCat.stock_movement})` },

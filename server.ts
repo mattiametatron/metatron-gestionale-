@@ -39,11 +39,71 @@ const CALENDARS_FILE = path.join(DATA_ROOT, 'server_calendars.json');
 const CALENDAR_EVENTS_FILE = path.join(DATA_ROOT, 'server_calendar_events.json');
 const NOTIFICATIONS_FILE = path.join(DATA_ROOT, 'server_notifications.json');
 const SYSTEM_SETTINGS_FILE = path.join(DATA_ROOT, 'server_system_settings.json');
+const UPDATE_CONFIG_FILE = path.join(DATA_ROOT, 'server_update_config.json');
 const SHARED_FILES_DIR = path.join(DATA_ROOT, 'shared_files');
 const USERS_DIR = path.join(DATA_ROOT, 'users');
 
 const SAFE_BACKUP_FILENAME_RE = /^metatron-backup-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.json$/;
 const SAFE_SESSION_PREFIX_RE = /^[a-f0-9]{12}$/;
+const SAFE_GITHUB_REPO_RE = /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/;
+
+function readBundledAppVersion(): string {
+  const fromEnv = String(process.env.METATRON_APP_VERSION || '').trim();
+  if (fromEnv) return fromEnv;
+  try {
+    const pkgPath = path.resolve(process.cwd(), 'package.json');
+    if (fs.existsSync(pkgPath)) {
+      const parsed = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+      if (typeof parsed?.version === 'string' && parsed.version.trim()) {
+        return parsed.version.trim();
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return '1.0.0';
+}
+
+function readBundledGithubRepo(): string {
+  const fromEnv = String(process.env.METATRON_GITHUB_REPO || '').trim();
+  if (SAFE_GITHUB_REPO_RE.test(fromEnv)) return fromEnv;
+  try {
+    const cfgPath = path.join(DESKTOP_APP_DIR, 'update-config.json');
+    if (fs.existsSync(cfgPath)) {
+      const parsed = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
+      const owner = String(parsed?.owner || '').trim();
+      const repo = String(parsed?.repo || '').trim();
+      const combined = owner && repo ? `${owner}/${repo}` : '';
+      if (SAFE_GITHUB_REPO_RE.test(combined)) return combined;
+    }
+  } catch {
+    // ignore
+  }
+  return '';
+}
+
+function compareSemverStrings(latestRaw: string, currentRaw: string): number {
+  const parse = (v: string) =>
+    v
+      .trim()
+      .replace(/^v/i, '')
+      .split('-')[0]
+      .split('.')
+      .map((n) => parseInt(n, 10) || 0);
+  const a = parse(latestRaw);
+  const b = parse(currentRaw);
+  const len = Math.max(a.length, b.length, 3);
+  for (let i = 0; i < len; i++) {
+    const av = a[i] || 0;
+    const bv = b[i] || 0;
+    if (av > bv) return 1;
+    if (av < bv) return -1;
+  }
+  return 0;
+}
+
+const APP_VERSION = readBundledAppVersion();
+const BUNDLED_GITHUB_REPO = readBundledGithubRepo();
 
 type DeployArtifactBase = 'os_installer' | 'desktop_app' | 'scripts' | 'workflows';
 const DEPLOY_ARTIFACT_BASE_DIRS: Record<DeployArtifactBase, string> = {
@@ -4074,6 +4134,312 @@ async function startServer() {
       return res.json({ ok: true, settings: systemSettings });
     }
   );
+
+  // =========================================================================
+  // SOFTWARE UPDATES ENGINE (GITHUB RELEASES + PRE-UPDATE BACKUP)
+  // =========================================================================
+  interface ServerUpdateAssetRecord {
+    name: string;
+    sizeBytes: number;
+    downloadUrl: string;
+    platform: 'windows' | 'macos' | 'linux' | 'other';
+  }
+  interface ServerUpdateConfigRecord {
+    githubRepo: string;
+    autoCheckEnabled: boolean;
+    autoBackupBeforeUpdate: boolean;
+    lastCheckedAt: string | null;
+    lastKnownLatestVersion: string | null;
+    lastKnownReleaseUrl: string | null;
+    lastKnownReleaseNotes: string | null;
+    lastKnownPublishedAt: string | null;
+    lastKnownAssets: ServerUpdateAssetRecord[];
+  }
+
+  const DEFAULT_UPDATE_CONFIG: ServerUpdateConfigRecord = {
+    githubRepo: BUNDLED_GITHUB_REPO,
+    autoCheckEnabled: true,
+    autoBackupBeforeUpdate: true,
+    lastCheckedAt: null,
+    lastKnownLatestVersion: null,
+    lastKnownReleaseUrl: null,
+    lastKnownReleaseNotes: null,
+    lastKnownPublishedAt: null,
+    lastKnownAssets: [],
+  };
+
+  let updateConfig: ServerUpdateConfigRecord = {
+    ...DEFAULT_UPDATE_CONFIG,
+    ...readJsonFile<Partial<ServerUpdateConfigRecord>>(UPDATE_CONFIG_FILE, {}),
+  };
+  if (!updateConfig.githubRepo && BUNDLED_GITHUB_REPO) {
+    updateConfig.githubRepo = BUNDLED_GITHUB_REPO;
+  }
+
+  function buildUpdateStatusPayload() {
+    const latest = updateConfig.lastKnownLatestVersion;
+    const updateAvailable = Boolean(
+      latest && compareSemverStrings(latest, APP_VERSION) > 0
+    );
+    return {
+      currentVersion: APP_VERSION,
+      isDesktopMode: process.env.METATRON_DESKTOP_MODE === '1',
+      updateAvailable,
+      config: updateConfig,
+    };
+  }
+
+  app.get('/api/system/updates/status', requireAuth, (_req: AuthenticatedRequest, res) => {
+    return res.json({ ok: true, status: buildUpdateStatusPayload() });
+  });
+
+  app.patch('/api/system/updates/config', requireAuth, (req: AuthenticatedRequest, res) => {
+    if (hasAnyEmployer() && req.authUser?.role !== 'employer') {
+      return res.status(403).json({
+        ok: false,
+        error: 'Solo un account Direzione può modificare la sorgente degli aggiornamenti.',
+      });
+    }
+    const body = req.body || {};
+    if (typeof body.githubRepo === 'string') {
+      const cleaned = body.githubRepo
+        .trim()
+        .replace(/^https?:\/\/github\.com\//i, '')
+        .replace(/\.git$/i, '')
+        .replace(/^\/+|\/+$/g, '');
+      if (cleaned !== '' && !SAFE_GITHUB_REPO_RE.test(cleaned)) {
+        return res.status(400).json({
+          ok: false,
+          error: 'Formato repository non valido. Usa il formato utente/nome-repo.',
+        });
+      }
+      updateConfig.githubRepo = cleaned;
+    }
+    if (typeof body.autoCheckEnabled === 'boolean') {
+      updateConfig.autoCheckEnabled = body.autoCheckEnabled;
+    }
+    if (typeof body.autoBackupBeforeUpdate === 'boolean') {
+      updateConfig.autoBackupBeforeUpdate = body.autoBackupBeforeUpdate;
+    }
+    writeJsonFile(UPDATE_CONFIG_FILE, updateConfig);
+    addSystemLog(
+      'info',
+      'Update Center',
+      `Configurazione aggiornamenti salvata (${updateConfig.githubRepo || 'nessun repo'})`,
+      false
+    );
+    return res.json({ ok: true, status: buildUpdateStatusPayload() });
+  });
+
+  app.post('/api/system/updates/check', requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const canOverrideRepo = !hasAnyEmployer() || req.authUser?.role === 'employer';
+      const requestedRepo =
+        canOverrideRepo &&
+        typeof req.body?.githubRepo === 'string' &&
+        req.body.githubRepo.trim()
+          ? req.body.githubRepo
+              .trim()
+              .replace(/^https?:\/\/github\.com\//i, '')
+              .replace(/\.git$/i, '')
+              .replace(/^\/+|\/+$/g, '')
+          : updateConfig.githubRepo;
+
+      if (!requestedRepo) {
+        return res.status(400).json({
+          ok: false,
+          error:
+            'Configura prima il repository GitHub (es. utente/nome-repo) per verificare gli aggiornamenti.',
+        });
+      }
+      if (!SAFE_GITHUB_REPO_RE.test(requestedRepo)) {
+        return res.status(400).json({
+          ok: false,
+          error: 'Formato repository GitHub non valido.',
+        });
+      }
+
+      const [owner, repo] = requestedRepo.split('/');
+      const ghUrl = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/latest`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      let ghResp: globalThis.Response;
+      try {
+        ghResp = await fetch(ghUrl, {
+          headers: {
+            Accept: 'application/vnd.github+json',
+            'User-Agent': 'METATRON-CaricoStudio-Updater',
+          },
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      if (ghResp.status === 404) {
+        updateConfig.lastCheckedAt = new Date().toISOString();
+        writeJsonFile(UPDATE_CONFIG_FILE, updateConfig);
+        return res.status(404).json({
+          ok: false,
+          error:
+            'Nessuna GitHub Release trovata per questo repository (o repository privato). Avvia prima il workflow su GitHub con "Pubblica Release" attivo.',
+        });
+      }
+      if (!ghResp.ok) {
+        return res.status(502).json({
+          ok: false,
+          error: `GitHub ha risposto con errore HTTP ${ghResp.status}. Riprova più tardi.`,
+        });
+      }
+
+      const release = (await ghResp.json()) as {
+        tag_name?: string;
+        name?: string;
+        body?: string;
+        html_url?: string;
+        published_at?: string;
+        assets?: Array<{
+          name?: string;
+          size?: number;
+          browser_download_url?: string;
+        }>;
+      };
+
+      const rawTag = String(release.tag_name || release.name || '').trim();
+      const latestVersion = rawTag.replace(/^v/i, '') || APP_VERSION;
+      const htmlUrl =
+        typeof release.html_url === 'string' &&
+        release.html_url.startsWith('https://github.com/')
+          ? release.html_url
+          : null;
+
+      const safeAssets: ServerUpdateAssetRecord[] = Array.isArray(release.assets)
+        ? release.assets
+            .filter(
+              (a) =>
+                typeof a?.name === 'string' &&
+                typeof a?.browser_download_url === 'string' &&
+                (a.browser_download_url.startsWith('https://github.com/') ||
+                  a.browser_download_url.startsWith('https://objects.githubusercontent.com/')) &&
+                !/\.yml$|\.blockmap$/i.test(a.name)
+            )
+            .slice(0, 12)
+            .map((a) => {
+              const name = String(a.name);
+              const platform: ServerUpdateAssetRecord['platform'] = /\.exe$/i.test(name)
+                ? 'windows'
+                : /\.dmg$/i.test(name)
+                ? 'macos'
+                : /\.AppImage$|\.deb$/i.test(name)
+                ? 'linux'
+                : 'other';
+              return {
+                name,
+                sizeBytes: Number(a.size) || 0,
+                downloadUrl: String(a.browser_download_url),
+                platform,
+              };
+            })
+        : [];
+
+      updateConfig = {
+        ...updateConfig,
+        githubRepo: requestedRepo,
+        lastCheckedAt: new Date().toISOString(),
+        lastKnownLatestVersion: latestVersion,
+        lastKnownReleaseUrl: htmlUrl,
+        lastKnownReleaseNotes:
+          typeof release.body === 'string' ? release.body.slice(0, 4000) : null,
+        lastKnownPublishedAt:
+          typeof release.published_at === 'string' ? release.published_at : null,
+        lastKnownAssets: safeAssets,
+      };
+      writeJsonFile(UPDATE_CONFIG_FILE, updateConfig);
+
+      const statusPayload = buildUpdateStatusPayload();
+      addSystemLog(
+        'info',
+        'Update Center',
+        statusPayload.updateAvailable
+          ? `Trovato aggiornamento METATRON v${latestVersion} (attuale v${APP_VERSION})`
+          : `Controllo completato: sistema aggiornato (v${APP_VERSION})`,
+        false
+      );
+
+      return res.json({ ok: true, status: statusPayload });
+    } catch (err) {
+      console.error('[METATRON Updater] Errore controllo aggiornamenti:', err);
+      return res.status(502).json({
+        ok: false,
+        error: 'Impossibile contattare GitHub per verificare gli aggiornamenti.',
+      });
+    }
+  });
+
+  app.post('/api/system/updates/pre-backup', requireAuth, (req: AuthenticatedRequest, res) => {
+    try {
+      ensureDir(BACKUPS_DIR);
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const filename = `metatron-backup-${stamp}.json`;
+      const resolved = path.resolve(BACKUPS_DIR, filename);
+      if (!resolved.startsWith(BACKUPS_DIR + path.sep)) {
+        return res.status(400).json({ ok: false, error: 'Percorso backup non valido.' });
+      }
+      const me = req.authUser!;
+      const userWorkspaces = usersRegistry.map((u) => {
+        const cache = getUserCache(u.id);
+        return {
+          user: toPublicUser(u),
+          loads: cache.loads,
+          inventory: cache.inventory,
+          photosIndex: cache.photos,
+          filesState: cache.filesState,
+        };
+      });
+
+      const snapshot = {
+        format: 'metatron-server-os-snapshot-v1',
+        reason: 'pre-update-automatic-backup',
+        appVersion: APP_VERSION,
+        createdAt: new Date().toISOString(),
+        createdBy: { id: me.id, name: me.name, role: me.role },
+        serverNode: {
+          nodeName: systemSettings.nodeName,
+          hostname: os.hostname(),
+          platform: os.platform(),
+          arch: os.arch(),
+        },
+        systemSettings,
+        calendars: calendarsRegistry,
+        calendarEvents: calendarEventsRegistry,
+        sharesIndex: sharesRegistry,
+        workspaces: userWorkspaces,
+      };
+
+      fs.writeFileSync(resolved, JSON.stringify(snapshot, null, 2), 'utf-8');
+      const st = fs.statSync(resolved);
+      addSystemLog(
+        'info',
+        'Update Center',
+        `Backup pre-aggiornamento salvato: ${filename} (${Math.round(st.size / 1024)} KB)`,
+        false
+      );
+      return res.status(201).json({
+        ok: true,
+        backup: {
+          filename,
+          sizeBytes: st.size,
+          createdAt: st.mtime.toISOString(),
+        },
+      });
+    } catch (err) {
+      console.error('[METATRON Updater] Errore pre-backup:', err);
+      return res.status(500).json({
+        ok: false,
+        error: 'Impossibile creare il backup pre-aggiornamento.',
+      });
+    }
+  });
 
   app.get('/api/system/deploy-artifacts', requireAuth, (_req: AuthenticatedRequest, res) => {
     const items = Object.entries(ALLOWED_DEPLOY_ARTIFACTS).map(([key, meta]) => {

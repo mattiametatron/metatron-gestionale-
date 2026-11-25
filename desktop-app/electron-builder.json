@@ -10,6 +10,7 @@
     "dist-electron/**/*",
     "desktop-app/main.cjs",
     "desktop-app/preload.cjs",
+    "desktop-app/update-config.json",
     "os-installer/**/*",
     "public/pwa-512x512.png",
     "package.json",
@@ -19,12 +20,19 @@
   "asarUnpack": [
     "dist-electron/**/*",
     "dist/**/*",
+    "desktop-app/update-config.json",
     "os-installer/**/*",
-    "node_modules/pdfkit/**/*"
+    "package.json"
   ],
   "extraMetadata": {
     "main": "desktop-app/main.cjs"
   },
+  "publish": [
+    {
+      "provider": "github",
+      "releaseType": "release"
+    }
+  ],
   "win": {
     "icon": "public/pwa-512x512.png",
     "target": [

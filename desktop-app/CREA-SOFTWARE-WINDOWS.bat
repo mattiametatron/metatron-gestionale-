@@ -46,7 +46,8 @@ if %errorlevel% neq 0 (
 )
 
 echo.
-echo [2/4] Installazione motore desktop Electron e compilatore .exe...
+echo [2/4] Installazione motore desktop Electron, auto-updater e compilatore .exe...
+call npm install --save --legacy-peer-deps electron-updater
 call npm install --save-dev --legacy-peer-deps electron electron-builder
 if %errorlevel% neq 0 (
   echo [ERRORE] Installazione Electron fallita.

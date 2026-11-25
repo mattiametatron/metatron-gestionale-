@@ -50,6 +50,11 @@ import { ClockApp } from './components/ClockApp';
 import { CalendarApp } from './components/CalendarApp';
 import { ServerMonitorApp } from './components/ServerMonitorApp';
 import { ServerControlPanelApp } from './components/ServerControlPanelApp';
+import {
+  SoftwareUpdateApp,
+  ServerUpdateStatusPayload,
+  DesktopUpdaterState,
+} from './components/SoftwareUpdateApp';
 import { TruckLoadPlanner } from './components/TruckLoadPlanner';
 import { SignaturesWorkspace } from './components/SignaturesWorkspace';
 import { PrintablePackingModal } from './components/PrintablePackingModal';
@@ -187,6 +192,10 @@ export default function App() {
   const [calendarSyncVersion, setCalendarSyncVersion] = useState<number>(0);
   const [readDerivedIds, setReadDerivedIds] = useState<string[]>([]);
   const [dismissedDerivedIds, setDismissedDerivedIds] = useState<string[]>([]);
+  const [serverUpdateStatus, setServerUpdateStatus] =
+    useState<ServerUpdateStatusPayload | null>(null);
+  const [desktopUpdaterState, setDesktopUpdaterState] =
+    useState<DesktopUpdaterState | null>(null);
 
   const persistNotifLocalState = useCallback(
     (userId: string, readIds: string[], dismissedIds: string[]) => {
@@ -458,9 +467,87 @@ export default function App() {
     setCalendarEvents([]);
     setReadDerivedIds([]);
     setDismissedDerivedIds([]);
+    setServerUpdateStatus(null);
     setIsTutorialOpen(false);
     setStatusNotice(null);
   }, []);
+
+  // Ascolta eventi dell'auto-updater nativo Electron quando in esecuzione come software desktop
+  useEffect(() => {
+    const bridge = (
+      window as unknown as {
+        metatronDesktop?: {
+          updater?: {
+            getState: () => Promise<DesktopUpdaterState>;
+            onStateChange: (cb: (state: DesktopUpdaterState) => void) => () => void;
+          };
+        };
+      }
+    ).metatronDesktop;
+    if (!bridge?.updater) return;
+    let active = true;
+    bridge.updater
+      .getState()
+      .then((st) => {
+        if (active && st) setDesktopUpdaterState(st);
+      })
+      .catch(() => {});
+    const unsub = bridge.updater.onStateChange((nextState) => {
+      if (active) setDesktopUpdaterState(nextState);
+    });
+    return () => {
+      active = false;
+      if (typeof unsub === 'function') unsub();
+    };
+  }, []);
+
+  // Controllo periodico automatico degli aggiornamenti (avvio + ogni 30 minuti)
+  useEffect(() => {
+    if (!authUser || !authToken || window.location.protocol === 'file:') return;
+    let cancelled = false;
+    const runCheck = async (allowRemoteCheck: boolean) => {
+      try {
+        const statusResp = await authFetch('/api/system/updates/status');
+        if (!statusResp.ok || cancelled) return;
+        const statusData = await statusResp.json().catch(() => null);
+        if (!statusData?.ok || !statusData?.status || cancelled) return;
+        setServerUpdateStatus(statusData.status);
+
+        if (
+          allowRemoteCheck &&
+          statusData.status.config?.autoCheckEnabled &&
+          statusData.status.config?.githubRepo
+        ) {
+          const lastChecked = statusData.status.config.lastCheckedAt
+            ? new Date(statusData.status.config.lastCheckedAt).getTime()
+            : 0;
+          if (Date.now() - lastChecked > 15 * 60 * 1000) {
+            const checkResp = await authFetch('/api/system/updates/check', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({}),
+            });
+            if (checkResp.ok && !cancelled) {
+              const checkData = await checkResp.json().catch(() => null);
+              if (checkData?.ok && checkData?.status) {
+                setServerUpdateStatus(checkData.status);
+              }
+            }
+          }
+        }
+      } catch {
+        // Offline o GitHub non raggiungibile
+      }
+    };
+
+    const initialTimer = window.setTimeout(() => runCheck(true), 3000);
+    const interval = window.setInterval(() => runCheck(true), 30 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(initialTimer);
+      window.clearInterval(interval);
+    };
+  }, [authUser, authToken]);
 
   const handleLogout = useCallback(() => {
     authFetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
@@ -770,6 +857,42 @@ export default function App() {
       });
     });
 
+    // 6. Notifica Aggiornamento di Sistema disponibile (GitHub Release / Desktop Auto-Updater)
+    const desktopHasUpdate =
+      desktopUpdaterState &&
+      (desktopUpdaterState.status === 'available' ||
+        desktopUpdaterState.status === 'downloading' ||
+        desktopUpdaterState.status === 'downloaded');
+    const serverHasUpdate = Boolean(
+      serverUpdateStatus?.updateAvailable &&
+        serverUpdateStatus.config.lastKnownLatestVersion
+    );
+    if (desktopHasUpdate || serverHasUpdate) {
+      const latestVer =
+        desktopUpdaterState?.availableVersion ||
+        serverUpdateStatus?.config.lastKnownLatestVersion ||
+        'nuova';
+      const updId = `derived_sys_update_${latestVer}`;
+      if (!dismissedSet.has(updId)) {
+        const isReadyToRestart = desktopUpdaterState?.status === 'downloaded';
+        list.push({
+          id: updId,
+          source: 'derived',
+          category: 'system_update',
+          title: isReadyToRestart
+            ? `Aggiornamento v${latestVer} pronto al riavvio`
+            : `Nuovo aggiornamento disponibile: v${latestVer}`,
+          body: isReadyToRestart
+            ? 'Pacchetto scaricato. Apri Aggiornamenti per riavviare e applicarlo senza perdere i dati.'
+            : 'Apri l’app Aggiornamenti per scaricare la nuova versione con backup automatico dei dati.',
+          targetApp: 'software_updates',
+          timestamp:
+            serverUpdateStatus?.config.lastCheckedAt || new Date().toISOString(),
+          read: readSet.has(updId),
+        });
+      }
+    }
+
     return list.sort((a, b) => {
       if (a.read !== b.read) return a.read ? 1 : -1;
       return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
@@ -783,6 +906,8 @@ export default function App() {
     calendarEvents,
     readDerivedIds,
     dismissedDerivedIds,
+    serverUpdateStatus,
+    desktopUpdaterState,
   ]);
 
   const handleMarkNotificationRead = useCallback(
@@ -2486,6 +2611,16 @@ export default function App() {
         ) : null;
       case 'server_control':
         return authUser ? <ServerControlPanelApp currentUser={authUser} /> : null;
+      case 'software_updates':
+        return authUser ? (
+          <SoftwareUpdateApp
+            currentUser={authUser}
+            updateStatus={serverUpdateStatus}
+            desktopUpdaterState={desktopUpdaterState}
+            onUpdateStatusChange={setServerUpdateStatus}
+            onForceReloadWeb={handleForceReload}
+          />
+        ) : null;
       case 'pallet_weights':
         return (
           <PalletWeightsWorkspace

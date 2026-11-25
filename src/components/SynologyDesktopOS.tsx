@@ -53,6 +53,7 @@ import {
   Calendar as CalendarIcon,
   Server,
   Cpu,
+  DownloadCloud,
 } from 'lucide-react';
 import { AuthUser, CargoLoad } from '../types/warehouse';
 import { LoadSummary } from '../utils/calculations';
@@ -87,7 +88,8 @@ export type SynologyAppId =
   | 'clock'
   | 'calendar'
   | 'server_monitor'
-  | 'server_control';
+  | 'server_control'
+  | 'software_updates';
 
 export type DesktopWindowId =
   | 'caricostudio'
@@ -101,7 +103,8 @@ export type DesktopWindowId =
   | 'clock'
   | 'calendar'
   | 'server_monitor'
-  | 'server_control';
+  | 'server_control'
+  | 'software_updates';
 
 export type WindowSnapMode = 'maximized' | 'floating' | 'left' | 'right';
 
@@ -246,6 +249,15 @@ export const DESKTOP_MAIN_APPS: DesktopAppDefinition[] = [
     iconBg: 'bg-gradient-to-b from-[#334155] to-[#0f172a]',
     badgeText: () => 'OS',
     icon: Server,
+  },
+  {
+    id: 'software_updates',
+    title: 'Aggiornamenti — Controllo Versioni, Download & Riavvio Sicuro',
+    shortTitle: 'Aggiornamenti',
+    subtitle: 'Controlla e installa nuove versioni di METATRON con backup automatico e zero perdita dati',
+    iconBg: 'bg-gradient-to-b from-[#06b6d4] to-[#0369a1]',
+    badgeText: () => 'Update',
+    icon: DownloadCloud,
   },
 ];
 
@@ -553,6 +565,15 @@ const DESKTOP_COLUMN_3: DesktopShortcutItem[] = [
     iconBg: 'bg-gradient-to-b from-[#334155] to-[#0f172a]',
     icon: Server,
     windowId: 'server_control',
+    action: 'open_window',
+  },
+  {
+    id: 'software_updates',
+    label: 'Aggiornamenti',
+    title: 'Aggiornamenti METATRON — Verifica, scarica e riavvia senza perdere i dati',
+    iconBg: 'bg-gradient-to-b from-[#06b6d4] to-[#0369a1]',
+    icon: DownloadCloud,
+    windowId: 'software_updates',
     action: 'open_window',
   },
 ];
@@ -1420,7 +1441,8 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
       appId === 'clock' ||
       appId === 'calendar' ||
       appId === 'server_monitor' ||
-      appId === 'server_control'
+      appId === 'server_control' ||
+      appId === 'software_updates'
     ) {
       openDesktopWindow(appId, initialSnap);
       return;
@@ -2118,7 +2140,8 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                 win.id === 'clock' ||
                 win.id === 'calendar' ||
                 win.id === 'server_monitor' ||
-                win.id === 'server_control' ? (
+                win.id === 'server_control' ||
+                win.id === 'software_updates' ? (
                   renderAppContent(win.id, (targetId) => openApp(targetId))
                 ) : caricoStudioSubApp === 'home' ? (
                   /* HUB INTERNO DELLE APP DI CARICOSTUDIO */

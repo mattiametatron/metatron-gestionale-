@@ -2,9 +2,21 @@ name: Build METATRON Desktop Software (.exe / .dmg / .AppImage)
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versione aggiornamento (es. 1.0.2 — lascia vuoto per incremento automatico 1.0.<build>)'
+        required: false
+        default: ''
+      publish_release:
+        description: 'Pubblica su GitHub Releases per aggiornamenti automatici in-app'
+        type: boolean
+        default: true
   push:
     tags:
       - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
   build-desktop:
@@ -41,21 +53,55 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Imposta versione e repository aggiornamenti automatici
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          GITHUB_REPO: ${{ github.repository }}
+          RUN_NUM: ${{ github.run_number }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            let ver = (process.env.INPUT_VERSION || "").trim().replace(/^v/i, "");
+            if (!ver && /^v\d+\.\d+\.\d+/.test(process.env.REF_NAME || "")) {
+              ver = process.env.REF_NAME.replace(/^v/i, "");
+            }
+            if (!ver) {
+              ver = `1.0.${process.env.RUN_NUM || "1"}`;
+            }
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            pkg.version = ver;
+            fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
+            const [owner, repo] = (process.env.GITHUB_REPO || "").split("/");
+            if (owner && repo) {
+              fs.writeFileSync(
+                "desktop-app/update-config.json",
+                JSON.stringify({ owner, repo, version: ver }, null, 2) + "\n"
+              );
+            }
+            console.log("Versione impostata:", ver, "Repo:", process.env.GITHUB_REPO);
+          '
+
       - name: Installa dipendenze
         run: npm install --legacy-peer-deps
 
-      - name: Installa Electron e electron-builder
-        run: npm install --save-dev --legacy-peer-deps electron electron-builder
+      - name: Installa Electron, electron-updater e electron-builder
+        run: |
+          npm install --save --legacy-peer-deps electron-updater
+          npm install --save-dev --legacy-peer-deps electron electron-builder
 
       - name: Compila frontend e motore server interno
         run: |
           npm run build
           node scripts/build-desktop-server.mjs
 
-      - name: Genera pacchetto Desktop installabile
+      - name: Genera pacchetto Desktop installabile (e pubblica Release se attivo)
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npx electron-builder ${{ matrix.platform_flag }} --config desktop-app/electron-builder.json --publish never
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx electron-builder ${{ matrix.platform_flag }} --config desktop-app/electron-builder.json --publish ${{ (github.event_name == 'push' || inputs.publish_release != false) && 'always' || 'never' }}
 
       - name: Carica pacchetto compilato (ZIP scaricabile)
         uses: actions/upload-artifact@v4

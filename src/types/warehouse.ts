@@ -366,7 +366,8 @@ export type NotificationCategory =
   | 'low_stock'
   | 'stock_movement'
   | 'calendar'
-  | 'alarm';
+  | 'alarm'
+  | 'system_update';
 
 export interface ServerNotificationRecord {
   id: string;
@@ -379,7 +380,8 @@ export interface ServerNotificationRecord {
     | 'warehouse_catalog'
     | 'stock_movements'
     | 'calendar'
-    | 'clock';
+    | 'clock'
+    | 'software_updates';
   meta?: {
     shareId?: string;
     calendarId?: string;

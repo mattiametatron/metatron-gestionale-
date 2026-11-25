@@ -20,7 +20,8 @@ export type TutorialContextId =
   | 'clock'
   | 'calendar'
   | 'server_monitor'
-  | 'server_control';
+  | 'server_control'
+  | 'software_updates';
 
 export interface TutorialStep {
   title: string;
@@ -388,6 +389,21 @@ export const APP_TUTORIALS: Record<TutorialContextId, AppTutorialDefinition> = {
       {
         title: 'Backup server, Sessioni e Log',
         body: 'Crea snapshot completi sanitizzati del server, controlla i volumi su disco, revoca sessioni di altri dispositivi e consulta il registro eventi live.',
+      },
+    ],
+  },
+  software_updates: {
+    id: 'software_updates',
+    appTitle: 'Aggiornamenti — Software METATRON senza perdita dati',
+    subtitle: 'Controlla nuove versioni su GitHub, scarica l\'aggiornamento e riavvia in sicurezza',
+    steps: [
+      {
+        title: 'Notifica automatica di nuovi aggiornamenti',
+        body: 'Quando pubblichi una nuova versione su GitHub, METATRON rileva l\'aggiornamento automaticamente e ti avvisa nel Centro Notifiche.',
+      },
+      {
+        title: 'Backup automatico e riavvio sicuro',
+        body: 'Prima di installare e riavviare il sistema, l\'app salva uno snapshot di sicurezza. Utenti, magazzino, foto, file e calendari restano sempre intatti.',
       },
     ],
   },
