@@ -225473,15 +225473,20 @@ async function startServer() {
       }
       const [owner, repo] = requestedRepo.split("/");
       const ghUrl = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/latest`;
+      const ghToken = String(process.env.METATRON_GITHUB_TOKEN || "").trim();
+      const ghHeaders = {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "METATRON-CaricoStudio-Updater"
+      };
+      if (ghToken) {
+        ghHeaders.Authorization = `Bearer ${ghToken}`;
+      }
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 8e3);
       let ghResp;
       try {
         ghResp = await fetch(ghUrl, {
-          headers: {
-            Accept: "application/vnd.github+json",
-            "User-Agent": "METATRON-CaricoStudio-Updater"
-          },
+          headers: ghHeaders,
           signal: controller.signal
         });
       } finally {
@@ -225492,7 +225497,7 @@ async function startServer() {
         writeJsonFile(UPDATE_CONFIG_FILE, updateConfig);
         return res.status(404).json({
           ok: false,
-          error: 'Nessuna GitHub Release trovata per questo repository (o repository privato). Avvia prima il workflow su GitHub con "Pubblica Release" attivo.'
+          error: "Nessuna Release leggibile trovata: se il repository GitHub \xE8 Privato, pubblica gli installer su un secondo repository Pubblico vuoto (es. utente/metatron-releases) lasciando privato il codice, oppure imposta la variabile ambiente METATRON_GITHUB_TOKEN."
         });
       }
       if (!ghResp.ok) {
@@ -226265,11 +226270,40 @@ ${JSON.stringify(toTranslate, null, 2)}`;
     app.use(vite.middlewares);
   } else {
     const indexHtmlPath = import_path.default.join(DIST_ROOT, "index.html");
+    const isDesktopRuntime = process.env.METATRON_DESKTOP_MODE === "1";
     console.log(
       `[CaricoStudio] Static DIST_ROOT=${DIST_ROOT} (index.html=${import_fs5.default.existsSync(indexHtmlPath)})`
     );
-    app.use(import_express.default.static(DIST_ROOT, { dotfiles: "allow" }));
+    if (isDesktopRuntime) {
+      app.get("/sw.js", (_req, res) => {
+        res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+        res.send(
+          `self.addEventListener('install',()=>self.skipWaiting());self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.map(k=>caches.delete(k)))).then(()=>self.registration.unregister()));});`
+        );
+      });
+      app.get("/registerSW.js", (_req, res) => {
+        res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+        res.send(
+          `if('serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister()));}`
+        );
+      });
+    }
+    app.use(
+      import_express.default.static(DIST_ROOT, {
+        dotfiles: "allow",
+        etag: !isDesktopRuntime,
+        lastModified: !isDesktopRuntime,
+        setHeaders: isDesktopRuntime ? (res) => {
+          res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+        } : void 0
+      })
+    );
     app.get("*", (_req, res) => {
+      if (isDesktopRuntime) {
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+      }
       res.sendFile(indexHtmlPath, { dotfiles: "allow" });
     });
   }

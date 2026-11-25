@@ -5311,11 +5311,44 @@ ${JSON.stringify(toTranslate, null, 2)}`;
     app.use(vite.middlewares);
   } else {
     const indexHtmlPath = path.join(DIST_ROOT, 'index.html');
+    const isDesktopRuntime = process.env.METATRON_DESKTOP_MODE === '1';
     console.log(
       `[CaricoStudio] Static DIST_ROOT=${DIST_ROOT} (index.html=${fs.existsSync(indexHtmlPath)})`
     );
-    app.use(express.static(DIST_ROOT, { dotfiles: 'allow' }));
+    if (isDesktopRuntime) {
+      // Nel software desktop locale non serve il Service Worker PWA: disinstalla eventuali SW vecchi
+      // così dopo ogni aggiornamento automatico l'interfaccia è sempre aggiornata all'istante.
+      app.get('/sw.js', (_req, res) => {
+        res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        res.send(
+          `self.addEventListener('install',()=>self.skipWaiting());self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.map(k=>caches.delete(k)))).then(()=>self.registration.unregister()));});`
+        );
+      });
+      app.get('/registerSW.js', (_req, res) => {
+        res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        res.send(
+          `if('serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister()));}`
+        );
+      });
+    }
+    app.use(
+      express.static(DIST_ROOT, {
+        dotfiles: 'allow',
+        etag: !isDesktopRuntime,
+        lastModified: !isDesktopRuntime,
+        setHeaders: isDesktopRuntime
+          ? (res) => {
+              res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+            }
+          : undefined,
+      })
+    );
     app.get('*', (_req, res) => {
+      if (isDesktopRuntime) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      }
       res.sendFile(indexHtmlPath, { dotfiles: 'allow' });
     });
   }

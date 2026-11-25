@@ -16,6 +16,7 @@ const {
   dialog,
   ipcMain,
   clipboard,
+  session,
 } = require('electron');
 
 let autoUpdater = null;
@@ -492,7 +493,7 @@ function buildApplicationMenu() {
         {
           label: 'Ricarica Interfaccia',
           accelerator: 'CmdOrCtrl+R',
-          click: () => mainWindow?.reload(),
+          click: () => mainWindow?.webContents.reloadIgnoringCache(),
         },
         {
           label: 'Schermo Intero',
@@ -664,7 +665,21 @@ function createMainWindow() {
     mainWindow = null;
   });
 
-  mainWindow.loadURL(appOrigin);
+  // Pulisce cache HTTP e Service Worker PWA ad ogni avvio (senza toccare cookie/sessione o dati)
+  // così dopo un aggiornamento automatico si carica sempre subito la nuova interfaccia.
+  session.defaultSession
+    .clearCache()
+    .then(() =>
+      session.defaultSession.clearStorageData({
+        storages: ['serviceworkers', 'cachestorage'],
+      })
+    )
+    .catch(() => {})
+    .finally(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.loadURL(appOrigin);
+      }
+    });
 }
 
 // IPC sicuri e limitati per il renderer desktop
@@ -715,6 +730,10 @@ ipcMain.handle('metatron:updater-install-restart', async () => {
   }
   try {
     isQuitting = true;
+    await session.defaultSession.clearCache().catch(() => {});
+    await session.defaultSession
+      .clearStorageData({ storages: ['serviceworkers', 'cachestorage'] })
+      .catch(() => {});
     stopEmbeddedServer();
     setImmediate(() => {
       autoUpdater.quitAndInstall(false, true);
