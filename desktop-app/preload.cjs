@@ -21,4 +21,16 @@ contextBridge.exposeInMainWorld('metatronDesktop', {
       };
     },
   },
+  bluetooth: {
+    selectDevice: (deviceId) => ipcRenderer.invoke('metatron:bluetooth-select', deviceId),
+    cancel: () => ipcRenderer.invoke('metatron:bluetooth-select', ''),
+    onDevices: (callback) => {
+      if (typeof callback !== 'function') return () => {};
+      const handler = (_event, devices) => callback(devices);
+      ipcRenderer.on('metatron:bluetooth-devices', handler);
+      return () => {
+        ipcRenderer.removeListener('metatron:bluetooth-devices', handler);
+      };
+    },
+  },
 });

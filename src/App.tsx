@@ -15,11 +15,14 @@ import {
   CargoLoad,
   CargoPallet,
   ChecklistItem,
+  CrmContact,
+  DdtDocument,
   ElectronicSignature,
   FinishingCartello,
   PackageVerificationProof,
   PALLET_SPECS,
   PalletType,
+  PurchaseOrder,
   ServerNotificationRecord,
   ShipmentHandoverProof,
   StockMovement,
@@ -55,6 +58,10 @@ import {
   ServerUpdateStatusPayload,
   DesktopUpdaterState,
 } from './components/SoftwareUpdateApp';
+import { DdtDocumentsApp } from './components/DdtDocumentsApp';
+import { ClientsSuppliersApp } from './components/ClientsSuppliersApp';
+import { PurchaseOrdersApp } from './components/PurchaseOrdersApp';
+import { TiMiniPrintApp } from './components/TiMiniPrintApp';
 import { TruckLoadPlanner } from './components/TruckLoadPlanner';
 import { SignaturesWorkspace } from './components/SignaturesWorkspace';
 import { PrintablePackingModal } from './components/PrintablePackingModal';
@@ -96,6 +103,9 @@ import {
 const STORAGE_KEY = 'caricostudio_loads_v5_win11';
 const INVENTORY_STORAGE_KEY = 'caricostudio_inventory_v1';
 const AUTO_SYNC_STOCK_KEY = 'caricostudio_autosync_stock_v1';
+const CRM_STORAGE_KEY = 'caricostudio_crm_v1';
+const DDT_STORAGE_KEY = 'caricostudio_ddt_v1';
+const PO_STORAGE_KEY = 'caricostudio_purchase_orders_v1';
 
 function createStarterLoadForUser(user: AuthUser): CargoLoad {
   return {
@@ -179,6 +189,14 @@ export default function App() {
     movements: [],
     hiddenCommessaCodes: [],
   });
+
+  // Stato dedicato per le 3 app aziendali: Clienti & Fornitori, DDT & Bolle, Ordini Fornitori
+  const [crmContacts, setCrmContacts] = useState<CrmContact[]>([]);
+  const [ddtDocuments, setDdtDocuments] = useState<DdtDocument[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [ddtInitialCommessaId, setDdtInitialCommessaId] = useState<string | null>(null);
+  const [ddtInitialClientId, setDdtInitialClientId] = useState<string | null>(null);
+  const [poInitialSupplierId, setPoInitialSupplierId] = useState<string | null>(null);
 
   // Stato Centro Notifiche + Calendari (condivisi & personali)
   const [serverNotifications, setServerNotifications] = useState<
@@ -287,15 +305,24 @@ export default function App() {
       // Carica i dati isolati dal server (con fallback su cache locale dell'utente)
       let resolvedLoads: CargoLoad[] | null = null;
       let resolvedInv: WarehouseInventoryState | null = null;
+      let resolvedCrm: CrmContact[] | null = null;
+      let resolvedDdt: DdtDocument[] | null = null;
+      let resolvedPo: PurchaseOrder[] | null = null;
 
       if (typeof window !== 'undefined' && window.location.protocol !== 'file:') {
         try {
-          const [loadsRes, invRes] = await Promise.all([
+          const [loadsRes, invRes, crmRes, ddtRes, poRes] = await Promise.all([
             authFetch('/api/loads').catch(() => null),
             authFetch('/api/inventory').catch(() => null),
+            authFetch('/api/crm').catch(() => null),
+            authFetch('/api/ddt').catch(() => null),
+            authFetch('/api/purchase-orders').catch(() => null),
           ]);
           const loadsJson = loadsRes && loadsRes.ok ? await loadsRes.json() : null;
           const invJson = invRes && invRes.ok ? await invRes.json() : null;
+          const crmJson = crmRes && crmRes.ok ? await crmRes.json() : null;
+          const ddtJson = ddtRes && ddtRes.ok ? await ddtRes.json() : null;
+          const poJson = poRes && poRes.ok ? await poRes.json() : null;
           if (Array.isArray(loadsJson?.loads) && loadsJson.loads.length > 0) {
             resolvedLoads = loadsJson.loads;
           }
@@ -312,6 +339,9 @@ export default function App() {
                 : [],
             };
           }
+          if (Array.isArray(crmJson?.contacts)) resolvedCrm = crmJson.contacts;
+          if (Array.isArray(ddtJson?.documents)) resolvedDdt = ddtJson.documents;
+          if (Array.isArray(poJson?.orders)) resolvedPo = poJson.orders;
         } catch {
           // fallback locale sotto
         }
@@ -400,9 +430,40 @@ export default function App() {
       }
       setLocalAlarmNotifications([]);
 
+      if (!resolvedCrm) {
+        try {
+          const rawCrm = localStorage.getItem(`${CRM_STORAGE_KEY}_${user.id}`);
+          const parsed = rawCrm ? JSON.parse(rawCrm) : null;
+          resolvedCrm = Array.isArray(parsed) ? parsed : [];
+        } catch {
+          resolvedCrm = [];
+        }
+      }
+      if (!resolvedDdt) {
+        try {
+          const rawDdt = localStorage.getItem(`${DDT_STORAGE_KEY}_${user.id}`);
+          const parsed = rawDdt ? JSON.parse(rawDdt) : null;
+          resolvedDdt = Array.isArray(parsed) ? parsed : [];
+        } catch {
+          resolvedDdt = [];
+        }
+      }
+      if (!resolvedPo) {
+        try {
+          const rawPo = localStorage.getItem(`${PO_STORAGE_KEY}_${user.id}`);
+          const parsed = rawPo ? JSON.parse(rawPo) : null;
+          resolvedPo = Array.isArray(parsed) ? parsed : [];
+        } catch {
+          resolvedPo = [];
+        }
+      }
+
       setLoads(resolvedLoads);
       setActiveLoadId(resolvedLoads[0].id);
       setInventory(resolvedInv);
+      setCrmContacts(resolvedCrm);
+      setDdtDocuments(resolvedDdt);
+      setPurchaseOrders(resolvedPo);
       setIsUserWorkspaceReady(true);
 
       // Carica notifiche server e calendari in background
@@ -650,6 +711,63 @@ export default function App() {
       }
     },
     [userInventoryStorageKey, authToken]
+  );
+
+  const handleUpdateCrmContacts = useCallback(
+    (next: CrmContact[]) => {
+      setCrmContacts(next);
+      if (authUser) {
+        try {
+          localStorage.setItem(`${CRM_STORAGE_KEY}_${authUser.id}`, JSON.stringify(next));
+        } catch {}
+      }
+      if (authToken && typeof window !== 'undefined' && window.location.protocol !== 'file:') {
+        authFetch('/api/crm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contacts: next }),
+        }).catch(() => {});
+      }
+    },
+    [authUser, authToken]
+  );
+
+  const handleUpdateDdtDocuments = useCallback(
+    (next: DdtDocument[]) => {
+      setDdtDocuments(next);
+      if (authUser) {
+        try {
+          localStorage.setItem(`${DDT_STORAGE_KEY}_${authUser.id}`, JSON.stringify(next));
+        } catch {}
+      }
+      if (authToken && typeof window !== 'undefined' && window.location.protocol !== 'file:') {
+        authFetch('/api/ddt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ documents: next }),
+        }).catch(() => {});
+      }
+    },
+    [authUser, authToken]
+  );
+
+  const handleUpdatePurchaseOrders = useCallback(
+    (next: PurchaseOrder[]) => {
+      setPurchaseOrders(next);
+      if (authUser) {
+        try {
+          localStorage.setItem(`${PO_STORAGE_KEY}_${authUser.id}`, JSON.stringify(next));
+        } catch {}
+      }
+      if (authToken && typeof window !== 'undefined' && window.location.protocol !== 'file:') {
+        authFetch('/api/purchase-orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orders: next }),
+        }).catch(() => {});
+      }
+    },
+    [authUser, authToken]
   );
 
   // Automazione CaricoStudio <-> Carico/Scarico (spunta = scarico automatico, deselezione = carico rientro)
@@ -2621,6 +2739,83 @@ export default function App() {
             onForceReloadWeb={handleForceReload}
           />
         ) : null;
+      case 'ddt_documents':
+        return authUser ? (
+          <DdtDocumentsApp
+            documents={ddtDocuments}
+            loads={loads}
+            activeLoad={activeLoad}
+            contacts={crmContacts}
+            currentUser={authUser}
+            initialCommessaId={ddtInitialCommessaId}
+            initialClientId={ddtInitialClientId}
+            onClearInitialIntent={() => {
+              setDdtInitialCommessaId(null);
+              setDdtInitialClientId(null);
+            }}
+            onUpdateDocuments={handleUpdateDdtDocuments}
+            onOpenCommessa={(loadId) => {
+              setActiveLoadId(loadId);
+              openApp('commesse');
+            }}
+          />
+        ) : null;
+      case 'crm_directory':
+        return authUser ? (
+          <ClientsSuppliersApp
+            contacts={crmContacts}
+            loads={loads}
+            inventory={inventory}
+            ddtDocuments={ddtDocuments}
+            purchaseOrders={purchaseOrders}
+            onUpdateContacts={handleUpdateCrmContacts}
+            onCreateLoadForClient={(contact) => {
+              setNewLoadClient(contact.companyName);
+              setNewLoadDest(
+                contact.shippingAddress ||
+                  [contact.billingAddress, contact.city].filter(Boolean).join(', ')
+              );
+              if (contact.defaultCarrier) {
+                setNewLoadCarrier(contact.defaultCarrier);
+              }
+              setShowNewLoadModal(true);
+            }}
+            onCreateDdtForClient={(contactId) => {
+              setDdtInitialClientId(contactId);
+              openApp('ddt_documents');
+            }}
+            onCreatePoForSupplier={(contactId) => {
+              setPoInitialSupplierId(contactId);
+              openApp('purchase_orders');
+            }}
+            onOpenCommessa={(loadId) => {
+              setActiveLoadId(loadId);
+              openApp('commesse');
+            }}
+          />
+        ) : null;
+      case 'purchase_orders':
+        return authUser ? (
+          <PurchaseOrdersApp
+            orders={purchaseOrders}
+            inventory={inventory}
+            contacts={crmContacts}
+            currentUser={authUser}
+            initialSupplierId={poInitialSupplierId}
+            onClearInitialIntent={() => setPoInitialSupplierId(null)}
+            onUpdateOrders={handleUpdatePurchaseOrders}
+            onUpdateInventory={handleUpdateInventory}
+          />
+        ) : null;
+      case 'timini_print':
+        return authUser ? (
+          <TiMiniPrintApp
+            currentUser={authUser}
+            inventory={inventory}
+            loads={loads}
+            activeLoad={activeLoad}
+          />
+        ) : null;
       case 'pallet_weights':
         return (
           <PalletWeightsWorkspace
@@ -2844,6 +3039,37 @@ export default function App() {
                   />
                 </div>
               </div>
+
+              {crmContacts.some((c) => c.kind === 'cliente' || c.kind === 'entrambi') && (
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Compila rapido da Rubrica Clienti
+                  </label>
+                  <select
+                    defaultValue=""
+                    onChange={(e) => {
+                      const c = crmContacts.find((x) => x.id === e.target.value);
+                      if (!c) return;
+                      setNewLoadClient(c.companyName);
+                      const dest =
+                        c.shippingAddress ||
+                        [c.billingAddress, c.city].filter(Boolean).join(', ');
+                      if (dest) setNewLoadDest(dest);
+                      if (c.defaultCarrier) setNewLoadCarrier(c.defaultCarrier);
+                    }}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:bg-white focus:outline-none focus:border-blue-600"
+                  >
+                    <option value="">Seleziona un cliente dalla rubrica...</option>
+                    {crmContacts
+                      .filter((c) => c.kind === 'cliente' || c.kind === 'entrambi')
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.companyName} {c.city ? `(${c.city})` : ''}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>

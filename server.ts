@@ -406,6 +406,9 @@ interface UserDataCache {
   inventory: { items: any[]; movements: any[]; hiddenCommessaCodes?: string[] } | null;
   photos: ServerPhotoRecord[];
   filesState: ServerFileManagerState;
+  crmContacts: any[];
+  ddtDocuments: any[];
+  purchaseOrders: any[];
 }
 
 interface UserPaths {
@@ -416,6 +419,9 @@ interface UserPaths {
   photosDir: string;
   filesIndexFile: string;
   filesDir: string;
+  crmFile: string;
+  ddtFile: string;
+  purchaseOrdersFile: string;
 }
 
 interface AuthenticatedRequest extends express.Request {
@@ -454,6 +460,12 @@ function getUserPaths(userId: string): UserPaths {
     photosDir: assertSafeChildPath(userDir, path.join(userDir, 'photos')),
     filesIndexFile: assertSafeChildPath(userDir, path.join(userDir, 'files.json')),
     filesDir: assertSafeChildPath(userDir, path.join(userDir, 'files')),
+    crmFile: assertSafeChildPath(userDir, path.join(userDir, 'crm_contacts.json')),
+    ddtFile: assertSafeChildPath(userDir, path.join(userDir, 'ddt_documents.json')),
+    purchaseOrdersFile: assertSafeChildPath(
+      userDir,
+      path.join(userDir, 'purchase_orders.json')
+    ),
   };
 }
 
@@ -1542,6 +1554,9 @@ async function startServer() {
       folders: [],
       files: [],
     });
+    const crmContacts = readJsonFile<any[]>(paths.crmFile, []);
+    const ddtDocuments = readJsonFile<any[]>(paths.ddtFile, []);
+    const purchaseOrders = readJsonFile<any[]>(paths.purchaseOrdersFile, []);
     const cache: UserDataCache = {
       loads: Array.isArray(loads) ? loads : [],
       inventory:
@@ -1553,6 +1568,9 @@ async function startServer() {
         filesState && Array.isArray(filesState.folders) && Array.isArray(filesState.files)
           ? filesState
           : { folders: [], files: [] },
+      crmContacts: Array.isArray(crmContacts) ? crmContacts : [],
+      ddtDocuments: Array.isArray(ddtDocuments) ? ddtDocuments : [],
+      purchaseOrders: Array.isArray(purchaseOrders) ? purchaseOrders : [],
     };
     userCaches.set(userId, cache);
     return cache;
@@ -1583,6 +1601,24 @@ async function startServer() {
     const cache = getUserCache(userId);
     cache.filesState = state;
     writeJsonFile(getUserPaths(userId).filesIndexFile, state);
+  }
+
+  function saveUserCrmContacts(userId: string, contacts: any[]) {
+    const cache = getUserCache(userId);
+    cache.crmContacts = contacts;
+    writeJsonFile(getUserPaths(userId).crmFile, contacts);
+  }
+
+  function saveUserDdtDocuments(userId: string, documents: any[]) {
+    const cache = getUserCache(userId);
+    cache.ddtDocuments = documents;
+    writeJsonFile(getUserPaths(userId).ddtFile, documents);
+  }
+
+  function saveUserPurchaseOrders(userId: string, orders: any[]) {
+    const cache = getUserCache(userId);
+    cache.purchaseOrders = orders;
+    writeJsonFile(getUserPaths(userId).purchaseOrdersFile, orders);
   }
 
   function createSessionForUser(userId: string, rememberMe = true): string {
@@ -2351,6 +2387,231 @@ async function startServer() {
       return res.json({ ok: true });
     }
     return res.status(400).json({ ok: false, error: 'Payload inventario non valido' });
+  });
+
+  // --- ANAGRAFICA CLIENTI & FORNITORI (Isolata per Utente) ---
+  const SAFE_DATAURL_IMG_RE = /^data:image\/(?:png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=]{1,600000}$/;
+  const clipStr = (val: unknown, maxLen: number): string =>
+    typeof val === 'string' ? val.trim().slice(0, maxLen) : '';
+  const safeNum = (val: unknown, min = 0, max = 1e9): number => {
+    const n = Number(val);
+    if (!Number.isFinite(n)) return min;
+    return Math.min(max, Math.max(min, n));
+  };
+
+  app.get('/api/crm', requireAuth, (req: AuthenticatedRequest, res) => {
+    const cache = getUserCache(req.authUser!.id);
+    return res.json({ contacts: cache.crmContacts });
+  });
+
+  app.post('/api/crm', requireAuth, (req: AuthenticatedRequest, res) => {
+    const { contacts } = req.body || {};
+    if (!Array.isArray(contacts) || contacts.length > 2000) {
+      return res.status(400).json({ ok: false, error: 'Elenco anagrafiche non valido' });
+    }
+    const allowedKinds = new Set(['cliente', 'fornitore', 'entrambi']);
+    const sanitized = contacts
+      .filter((c) => c && typeof c === 'object' && clipStr(c.companyName, 200))
+      .map((c) => {
+        const rawWebsite = clipStr(c.website, 240);
+        const safeWebsite =
+          rawWebsite && /^https?:\/\//i.test(rawWebsite)
+            ? rawWebsite
+            : rawWebsite && !/^(javascript|data|vbscript):/i.test(rawWebsite)
+            ? `https://${rawWebsite}`
+            : '';
+        return {
+          id: clipStr(c.id, 80) || `crm_${crypto.randomBytes(6).toString('hex')}`,
+          kind: allowedKinds.has(c.kind) ? c.kind : 'cliente',
+          code: clipStr(c.code, 40),
+          companyName: clipStr(c.companyName, 200),
+          contactName: clipStr(c.contactName, 140),
+          vatNumber: clipStr(c.vatNumber, 40),
+          sdiCode: clipStr(c.sdiCode, 80),
+          email: clipStr(c.email, 160),
+          phone: clipStr(c.phone, 50),
+          mobile: clipStr(c.mobile, 50),
+          website: safeWebsite,
+          billingAddress: clipStr(c.billingAddress, 240),
+          shippingAddress: clipStr(c.shippingAddress, 240),
+          city: clipStr(c.city, 100),
+          province: clipStr(c.province, 16),
+          postalCode: clipStr(c.postalCode, 20),
+          country: clipStr(c.country, 80) || 'Italia',
+          defaultCarrier: clipStr(c.defaultCarrier, 120),
+          paymentTerms: clipStr(c.paymentTerms, 100),
+          leadTimeDays:
+            c.leadTimeDays !== undefined && c.leadTimeDays !== null && c.leadTimeDays !== ''
+              ? Math.round(safeNum(c.leadTimeDays, 0, 365))
+              : undefined,
+          notes: clipStr(c.notes, 2000),
+          isFavorite: Boolean(c.isFavorite),
+          createdAt: clipStr(c.createdAt, 40) || new Date().toISOString(),
+          updatedAt: clipStr(c.updatedAt, 40) || new Date().toISOString(),
+        };
+      });
+    saveUserCrmContacts(req.authUser!.id, sanitized);
+    return res.json({ ok: true, contacts: sanitized });
+  });
+
+  // --- DDT / DOCUMENTI DI TRASPORTO (Isolati per Utente) ---
+  app.get('/api/ddt', requireAuth, (req: AuthenticatedRequest, res) => {
+    const cache = getUserCache(req.authUser!.id);
+    return res.json({ documents: cache.ddtDocuments });
+  });
+
+  app.post('/api/ddt', requireAuth, (req: AuthenticatedRequest, res) => {
+    const { documents } = req.body || {};
+    if (!Array.isArray(documents) || documents.length > 2000) {
+      return res.status(400).json({ ok: false, error: 'Elenco DDT non valido' });
+    }
+    const allowedStatuses = new Set(['bozza', 'emesso', 'in_transito', 'consegnato', 'annullato']);
+    const allowedCausals = new Set([
+      'Vendita',
+      'Conto Lavorazione',
+      'Conto Visione',
+      'Reso',
+      'Trasferimento Interno',
+      'Riparazione',
+      'Omaggio',
+    ]);
+    const allowedTransportBy = new Set(['Mittente', 'Destinatario', 'Vettore']);
+    const sanitized = documents
+      .filter((d) => d && typeof d === 'object' && clipStr(d.number, 60))
+      .map((d) => {
+        const rawItems = Array.isArray(d.items) ? d.items.slice(0, 500) : [];
+        const items = rawItems
+          .filter((it: any) => it && typeof it === 'object')
+          .map((it: any) => ({
+            id: clipStr(it.id, 80) || `ddti_${crypto.randomBytes(5).toString('hex')}`,
+            sku: clipStr(it.sku, 80),
+            description: clipStr(it.description, 240),
+            unit: clipStr(it.unit, 24) || 'pz',
+            quantity: safeNum(it.quantity, 0, 1e7),
+            unitWeightKg: safeNum(it.unitWeightKg, 0, 1e6),
+            notes: clipStr(it.notes, 300),
+          }));
+        const driverSig =
+          typeof d.driverSignatureDataUrl === 'string' &&
+          SAFE_DATAURL_IMG_RE.test(d.driverSignatureDataUrl)
+            ? d.driverSignatureDataUrl
+            : undefined;
+        const recipientSig =
+          typeof d.recipientSignatureDataUrl === 'string' &&
+          SAFE_DATAURL_IMG_RE.test(d.recipientSignatureDataUrl)
+            ? d.recipientSignatureDataUrl
+            : undefined;
+        return {
+          id: clipStr(d.id, 80) || `ddt_${crypto.randomBytes(6).toString('hex')}`,
+          number: clipStr(d.number, 60),
+          progressiveNumber: Math.round(safeNum(d.progressiveNumber, 1, 999999)),
+          year: Math.round(safeNum(d.year, 2000, 2100)),
+          issueDate: clipStr(d.issueDate, 20) || new Date().toISOString().slice(0, 10),
+          transportDateTime:
+            clipStr(d.transportDateTime, 30) || new Date().toISOString().slice(0, 16),
+          status: allowedStatuses.has(d.status) ? d.status : 'bozza',
+          commessaId: clipStr(d.commessaId, 80) || undefined,
+          commessaCode: clipStr(d.commessaCode, 60) || undefined,
+          commessaTitle: clipStr(d.commessaTitle, 200) || undefined,
+          senderCompany: clipStr(d.senderCompany, 200) || 'METATRON CaricoStudio',
+          senderVat: clipStr(d.senderVat, 40),
+          senderAddress: clipStr(d.senderAddress, 240),
+          clientId: clipStr(d.clientId, 80) || undefined,
+          recipientName: clipStr(d.recipientName, 200),
+          recipientVat: clipStr(d.recipientVat, 40),
+          recipientAddress: clipStr(d.recipientAddress, 240),
+          destinationAddress: clipStr(d.destinationAddress, 240),
+          causal: allowedCausals.has(d.causal) ? d.causal : 'Vendita',
+          transportBy: allowedTransportBy.has(d.transportBy) ? d.transportBy : 'Vettore',
+          carrierName: clipStr(d.carrierName, 160),
+          driverName: clipStr(d.driverName, 120),
+          vehiclePlate: clipStr(d.vehiclePlate, 30),
+          trackingCode: clipStr(d.trackingCode, 80),
+          appearance: clipStr(d.appearance, 200) || 'Bancali filmati e scatole',
+          packagesCount: Math.round(safeNum(d.packagesCount, 0, 100000)),
+          palletsCount: Math.round(safeNum(d.palletsCount, 0, 10000)),
+          grossWeightKg: safeNum(d.grossWeightKg, 0, 1e7),
+          netWeightKg: safeNum(d.netWeightKg, 0, 1e7),
+          porto: d.porto === 'Assegnato' ? 'Assegnato' : 'Franco',
+          items,
+          notes: clipStr(d.notes, 2000),
+          driverSignatureDataUrl: driverSig,
+          recipientSignatureDataUrl: recipientSig,
+          signedAt: clipStr(d.signedAt, 40) || undefined,
+          createdBy: clipStr(d.createdBy, 120) || req.authUser!.name,
+          createdAt: clipStr(d.createdAt, 40) || new Date().toISOString(),
+          updatedAt: clipStr(d.updatedAt, 40) || new Date().toISOString(),
+        };
+      });
+    saveUserDdtDocuments(req.authUser!.id, sanitized);
+    return res.json({ ok: true, documents: sanitized });
+  });
+
+  // --- ORDINI FORNITORI & RIORDINO SCORTE (Isolati per Utente) ---
+  app.get('/api/purchase-orders', requireAuth, (req: AuthenticatedRequest, res) => {
+    const cache = getUserCache(req.authUser!.id);
+    return res.json({ orders: cache.purchaseOrders });
+  });
+
+  app.post('/api/purchase-orders', requireAuth, (req: AuthenticatedRequest, res) => {
+    const { orders } = req.body || {};
+    if (!Array.isArray(orders) || orders.length > 2000) {
+      return res.status(400).json({ ok: false, error: 'Elenco ordini fornitori non valido' });
+    }
+    const allowedStatuses = new Set([
+      'bozza',
+      'inviato',
+      'confermato',
+      'parziale',
+      'ricevuto',
+      'annullato',
+    ]);
+    const sanitized = orders
+      .filter((o) => o && typeof o === 'object' && clipStr(o.number, 60))
+      .map((o) => {
+        const rawItems = Array.isArray(o.items) ? o.items.slice(0, 500) : [];
+        const items = rawItems
+          .filter((it: any) => it && typeof it === 'object')
+          .map((it: any) => ({
+            id: clipStr(it.id, 80) || `poi_${crypto.randomBytes(5).toString('hex')}`,
+            inventoryItemId: clipStr(it.inventoryItemId, 80) || undefined,
+            sku: clipStr(it.sku, 80),
+            name: clipStr(it.name, 220),
+            unit: clipStr(it.unit, 24) || 'pz',
+            currentStockAtOrder: safeNum(it.currentStockAtOrder, 0, 1e7),
+            minStockAtOrder: safeNum(it.minStockAtOrder, 0, 1e7),
+            orderedQty: safeNum(it.orderedQty, 0, 1e7),
+            receivedQty: safeNum(it.receivedQty, 0, 1e7),
+            unitCostEur: safeNum(it.unitCostEur, 0, 1e8),
+            notes: clipStr(it.notes, 300),
+          }));
+        return {
+          id: clipStr(o.id, 80) || `po_${crypto.randomBytes(6).toString('hex')}`,
+          number: clipStr(o.number, 60),
+          progressiveNumber: Math.round(safeNum(o.progressiveNumber, 1, 999999)),
+          year: Math.round(safeNum(o.year, 2000, 2100)),
+          orderDate: clipStr(o.orderDate, 20) || new Date().toISOString().slice(0, 10),
+          expectedDeliveryDate: clipStr(o.expectedDeliveryDate, 20) || undefined,
+          status: allowedStatuses.has(o.status) ? o.status : 'bozza',
+          supplierId: clipStr(o.supplierId, 80) || undefined,
+          supplierName: clipStr(o.supplierName, 200) || 'Fornitore generico',
+          supplierEmail: clipStr(o.supplierEmail, 160),
+          supplierPhone: clipStr(o.supplierPhone, 50),
+          supplierVat: clipStr(o.supplierVat, 40),
+          supplierAddress: clipStr(o.supplierAddress, 240),
+          paymentTerms: clipStr(o.paymentTerms, 100),
+          deliveryAddress: clipStr(o.deliveryAddress, 240),
+          notes: clipStr(o.notes, 2000),
+          items,
+          receivedAt: clipStr(o.receivedAt, 40) || undefined,
+          stockLoaded: Boolean(o.stockLoaded),
+          createdBy: clipStr(o.createdBy, 120) || req.authUser!.name,
+          createdAt: clipStr(o.createdAt, 40) || new Date().toISOString(),
+          updatedAt: clipStr(o.updatedAt, 40) || new Date().toISOString(),
+        };
+      });
+    saveUserPurchaseOrders(req.authUser!.id, sanitized);
+    return res.json({ ok: true, orders: sanitized });
   });
 
   // --- APP FOTO PER COMMESSA (Isolata per Utente) ---

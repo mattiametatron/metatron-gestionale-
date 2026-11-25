@@ -41,6 +41,11 @@ let serverProcess = null;
 let activePort = 3000;
 let isQuitting = false;
 let updateCheckTimer = null;
+let pendingBluetoothCallback = null;
+
+// Abilita Web Bluetooth nativo su Windows/Linux/macOS per stampanti termiche BLE (TiMini / Tiny Print)
+app.commandLine.appendSwitch('enable-web-bluetooth');
+app.commandLine.appendSwitch('enable-experimental-web-platform-features');
 
 const isPortableBuild = Boolean(process.env.PORTABLE_EXECUTABLE_DIR);
 
@@ -662,7 +667,26 @@ function createMainWindow() {
   });
 
   mainWindow.on('closed', () => {
+    if (pendingBluetoothCallback) {
+      try {
+        pendingBluetoothCallback('');
+      } catch {}
+      pendingBluetoothCallback = null;
+    }
     mainWindow = null;
+  });
+
+  // Selettore dispositivi Bluetooth BLE nativo per stampanti termiche (TiMini / Tiny Print)
+  mainWindow.webContents.on('select-bluetooth-device', (event, deviceList, callback) => {
+    event.preventDefault();
+    pendingBluetoothCallback = callback;
+    const safeDevices = (Array.isArray(deviceList) ? deviceList : []).map((d) => ({
+      deviceId: String(d.deviceId || ''),
+      deviceName: String(d.deviceName || 'Dispositivo Bluetooth'),
+    }));
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('metatron:bluetooth-devices', safeDevices);
+    }
   });
 
   // Pulisce cache HTTP e Service Worker PWA ad ogni avvio (senza toccare cookie/sessione o dati)
@@ -700,6 +724,20 @@ ipcMain.handle('metatron:get-network-info', async () => {
 
 ipcMain.handle('metatron:updater-get-state', async () => {
   return updaterState;
+});
+
+ipcMain.handle('metatron:bluetooth-select', async (_event, deviceId) => {
+  if (typeof pendingBluetoothCallback === 'function') {
+    const cb = pendingBluetoothCallback;
+    pendingBluetoothCallback = null;
+    try {
+      cb(typeof deviceId === 'string' ? deviceId : '');
+      return { ok: true };
+    } catch {
+      return { ok: false };
+    }
+  }
+  return { ok: false };
 });
 
 ipcMain.handle('metatron:updater-check', async (_event, repoSlug) => {
@@ -758,6 +796,25 @@ app.on('second-instance', () => {
 
 app.whenReady().then(async () => {
   try {
+    // Consente Web Bluetooth nel programma desktop nativo per stampanti termiche TiMini / BLE
+    session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
+      if (permission === 'bluetooth' || permission === 'bluetoothScanning') {
+        return true;
+      }
+      return true;
+    });
+    session.defaultSession.setDevicePermissionHandler((details) => {
+      if (details.deviceType === 'bluetooth') {
+        return true;
+      }
+      return true;
+    });
+    if (typeof session.defaultSession.setBluetoothPairingHandler === 'function') {
+      session.defaultSession.setBluetoothPairingHandler((_details, callback) => {
+        callback({ confirmed: true });
+      });
+    }
+
     initAutoUpdater();
     await startEmbeddedServer();
     buildApplicationMenu();

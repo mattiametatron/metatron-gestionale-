@@ -381,7 +381,10 @@ export interface ServerNotificationRecord {
     | 'stock_movements'
     | 'calendar'
     | 'clock'
-    | 'software_updates';
+    | 'software_updates'
+    | 'ddt_documents'
+    | 'crm_directory'
+    | 'purchase_orders';
   meta?: {
     shareId?: string;
     calendarId?: string;
@@ -391,6 +394,146 @@ export interface ServerNotificationRecord {
   };
   read: boolean;
   createdAt: string;
+}
+
+export type CrmContactKind = 'cliente' | 'fornitore' | 'entrambi';
+
+export interface CrmContact {
+  id: string;
+  kind: CrmContactKind;
+  code: string;
+  companyName: string;
+  contactName?: string;
+  vatNumber?: string;
+  sdiCode?: string;
+  email?: string;
+  phone?: string;
+  mobile?: string;
+  website?: string;
+  billingAddress?: string;
+  shippingAddress?: string;
+  city?: string;
+  province?: string;
+  postalCode?: string;
+  country?: string;
+  defaultCarrier?: string;
+  paymentTerms?: string;
+  leadTimeDays?: number;
+  notes?: string;
+  isFavorite?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type DdtStatus = 'bozza' | 'emesso' | 'in_transito' | 'consegnato' | 'annullato';
+
+export type DdtCausal =
+  | 'Vendita'
+  | 'Conto Lavorazione'
+  | 'Conto Visione'
+  | 'Reso'
+  | 'Trasferimento Interno'
+  | 'Riparazione'
+  | 'Omaggio';
+
+export type DdtTransportBy = 'Mittente' | 'Destinatario' | 'Vettore';
+
+export interface DdtLineItem {
+  id: string;
+  sku: string;
+  description: string;
+  unit: string;
+  quantity: number;
+  unitWeightKg: number;
+  notes?: string;
+}
+
+export interface DdtDocument {
+  id: string;
+  number: string;
+  progressiveNumber: number;
+  year: number;
+  issueDate: string; // YYYY-MM-DD
+  transportDateTime: string; // YYYY-MM-DDTHH:MM
+  status: DdtStatus;
+  commessaId?: string;
+  commessaCode?: string;
+  commessaTitle?: string;
+  senderCompany: string;
+  senderVat?: string;
+  senderAddress?: string;
+  clientId?: string;
+  recipientName: string;
+  recipientVat?: string;
+  recipientAddress?: string;
+  destinationAddress?: string;
+  causal: DdtCausal;
+  transportBy: DdtTransportBy;
+  carrierName?: string;
+  driverName?: string;
+  vehiclePlate?: string;
+  trackingCode?: string;
+  appearance: string;
+  packagesCount: number;
+  palletsCount: number;
+  grossWeightKg: number;
+  netWeightKg: number;
+  porto: 'Franco' | 'Assegnato';
+  items: DdtLineItem[];
+  notes?: string;
+  driverSignatureDataUrl?: string;
+  recipientSignatureDataUrl?: string;
+  signedAt?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PurchaseOrderStatus =
+  | 'bozza'
+  | 'inviato'
+  | 'confermato'
+  | 'parziale'
+  | 'ricevuto'
+  | 'annullato';
+
+export interface PurchaseOrderItem {
+  id: string;
+  inventoryItemId?: string;
+  sku: string;
+  name: string;
+  unit: string;
+  currentStockAtOrder: number;
+  minStockAtOrder: number;
+  orderedQty: number;
+  receivedQty: number;
+  unitCostEur: number;
+  notes?: string;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  number: string;
+  progressiveNumber: number;
+  year: number;
+  orderDate: string; // YYYY-MM-DD
+  expectedDeliveryDate?: string; // YYYY-MM-DD
+  status: PurchaseOrderStatus;
+  supplierId?: string;
+  supplierName: string;
+  supplierEmail?: string;
+  supplierPhone?: string;
+  supplierVat?: string;
+  supplierAddress?: string;
+  paymentTerms?: string;
+  deliveryAddress?: string;
+  notes?: string;
+  items: PurchaseOrderItem[];
+  receivedAt?: string;
+  stockLoaded?: boolean;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export const PALLET_SPECS: Record<

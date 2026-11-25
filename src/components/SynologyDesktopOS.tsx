@@ -54,6 +54,8 @@ import {
   Server,
   Cpu,
   DownloadCloud,
+  Building2,
+  ShoppingCart,
 } from 'lucide-react';
 import { AuthUser, CargoLoad } from '../types/warehouse';
 import { LoadSummary } from '../utils/calculations';
@@ -89,7 +91,11 @@ export type SynologyAppId =
   | 'calendar'
   | 'server_monitor'
   | 'server_control'
-  | 'software_updates';
+  | 'software_updates'
+  | 'ddt_documents'
+  | 'crm_directory'
+  | 'purchase_orders'
+  | 'timini_print';
 
 export type DesktopWindowId =
   | 'caricostudio'
@@ -104,7 +110,11 @@ export type DesktopWindowId =
   | 'calendar'
   | 'server_monitor'
   | 'server_control'
-  | 'software_updates';
+  | 'software_updates'
+  | 'ddt_documents'
+  | 'crm_directory'
+  | 'purchase_orders'
+  | 'timini_print';
 
 export type WindowSnapMode = 'maximized' | 'floating' | 'left' | 'right';
 
@@ -258,6 +268,42 @@ export const DESKTOP_MAIN_APPS: DesktopAppDefinition[] = [
     iconBg: 'bg-gradient-to-b from-[#06b6d4] to-[#0369a1]',
     badgeText: () => 'Update',
     icon: DownloadCloud,
+  },
+  {
+    id: 'ddt_documents',
+    title: 'DDT & Bolle — Documenti di Trasporto PDF & Firme',
+    shortTitle: 'DDT & Bolle',
+    subtitle: 'Genera DDT conformi in PDF A4 da commessa con numerazione progressiva, colli, pesi e firme',
+    iconBg: 'bg-gradient-to-b from-[#2563eb] to-[#1d4ed8]',
+    badgeText: () => 'PDF A4',
+    icon: FileText,
+  },
+  {
+    id: 'crm_directory',
+    title: 'Clienti & Fornitori — Anagrafica & Storico Aziendale',
+    shortTitle: 'Clienti & Forn.',
+    subtitle: 'Rubrica centralizzata con indirizzi di scarico, P.IVA, corrieri e storico commesse/ordini',
+    iconBg: 'bg-gradient-to-b from-[#8b5cf6] to-[#6d28d9]',
+    badgeText: () => 'Rubrica',
+    icon: Building2,
+  },
+  {
+    id: 'purchase_orders',
+    title: 'Ordini Fornitori — Riordino Automatico Scorte & Carico',
+    shortTitle: 'Ordini Forn.',
+    subtitle: 'Riordina automaticamente gli articoli sotto scorta, invia ordini PDF e carica in magazzino',
+    iconBg: 'bg-gradient-to-b from-[#059669] to-[#047857]',
+    badgeText: () => 'Acquisti',
+    icon: ShoppingCart,
+  },
+  {
+    id: 'timini_print',
+    title: 'TiMini Print — Stampante Etichette Termiche 57mm Bluetooth',
+    shortTitle: 'TiMini Print',
+    subtitle: 'Stampa etichette con QR, Barcode e loghi direttamente via Bluetooth BLE su stampanti TiMini / Tiny Print',
+    iconBg: 'bg-gradient-to-b from-[#ec4899] to-[#be185d]',
+    badgeText: () => '57mm BLE',
+    icon: Printer,
   },
 ];
 
@@ -578,6 +624,45 @@ const DESKTOP_COLUMN_3: DesktopShortcutItem[] = [
   },
 ];
 
+const DESKTOP_COLUMN_4: DesktopShortcutItem[] = [
+  {
+    id: 'ddt_documents',
+    label: 'DDT & Bolle',
+    title: 'DDT & Bolle di Trasporto — Generatore PDF A4 con numerazione e firme digitali',
+    iconBg: 'bg-gradient-to-b from-[#2563eb] to-[#1d4ed8]',
+    icon: FileText,
+    windowId: 'ddt_documents',
+    action: 'open_window',
+  },
+  {
+    id: 'crm_directory',
+    label: 'Clienti & Forn.',
+    title: 'Anagrafica Clienti & Fornitori — Indirizzi, P.IVA, corrieri e storico',
+    iconBg: 'bg-gradient-to-b from-[#8b5cf6] to-[#6d28d9]',
+    icon: Building2,
+    windowId: 'crm_directory',
+    action: 'open_window',
+  },
+  {
+    id: 'purchase_orders',
+    label: 'Ordini Forn.',
+    title: 'Ordini Fornitori & Riordino Automatico Scorte — PDF e carico rapido in magazzino',
+    iconBg: 'bg-gradient-to-b from-[#059669] to-[#047857]',
+    icon: ShoppingCart,
+    windowId: 'purchase_orders',
+    action: 'open_window',
+  },
+  {
+    id: 'timini_print',
+    label: 'TiMini Print',
+    title: 'TiMini Print — Stampante Etichette Termiche 57mm Bluetooth & USB',
+    iconBg: 'bg-gradient-to-b from-[#ec4899] to-[#be185d]',
+    icon: Printer,
+    windowId: 'timini_print',
+    action: 'open_window',
+  },
+];
+
 const EMPLOYER_ONLY_SHORTCUT: DesktopShortcutItem = {
   id: 'employer_hub',
   label: 'Direzione Team',
@@ -595,9 +680,15 @@ function getShortcutsForRole(isEmployer: boolean): DesktopShortcutItem[] {
       ...DESKTOP_COLUMN_1,
       ...DESKTOP_COLUMN_2,
       ...DESKTOP_COLUMN_3,
+      ...DESKTOP_COLUMN_4,
     ];
   }
-  return [...DESKTOP_COLUMN_1, ...DESKTOP_COLUMN_2, ...DESKTOP_COLUMN_3];
+  return [
+    ...DESKTOP_COLUMN_1,
+    ...DESKTOP_COLUMN_2,
+    ...DESKTOP_COLUMN_3,
+    ...DESKTOP_COLUMN_4,
+  ];
 }
 
 interface DesktopGridPos {
@@ -628,6 +719,9 @@ function getDefaultDesktopPositions(isEmployer: boolean): Record<string, Desktop
   }
   DESKTOP_COLUMN_3.forEach((item, idx) => {
     map[item.id] = { col: 2, row: idx };
+  });
+  DESKTOP_COLUMN_4.forEach((item, idx) => {
+    map[item.id] = { col: 3, row: idx };
   });
   return map;
 }
@@ -1442,7 +1536,11 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
       appId === 'calendar' ||
       appId === 'server_monitor' ||
       appId === 'server_control' ||
-      appId === 'software_updates'
+      appId === 'software_updates' ||
+      appId === 'ddt_documents' ||
+      appId === 'crm_directory' ||
+      appId === 'purchase_orders' ||
+      appId === 'timini_print'
     ) {
       openDesktopWindow(appId, initialSnap);
       return;
@@ -2141,7 +2239,11 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                 win.id === 'calendar' ||
                 win.id === 'server_monitor' ||
                 win.id === 'server_control' ||
-                win.id === 'software_updates' ? (
+                win.id === 'software_updates' ||
+                win.id === 'ddt_documents' ||
+                win.id === 'crm_directory' ||
+                win.id === 'purchase_orders' ||
+                win.id === 'timini_print' ? (
                   renderAppContent(win.id, (targetId) => openApp(targetId))
                 ) : caricoStudioSubApp === 'home' ? (
                   /* HUB INTERNO DELLE APP DI CARICOSTUDIO */

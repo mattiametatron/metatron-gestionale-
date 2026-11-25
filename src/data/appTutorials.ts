@@ -21,7 +21,11 @@ export type TutorialContextId =
   | 'calendar'
   | 'server_monitor'
   | 'server_control'
-  | 'software_updates';
+  | 'software_updates'
+  | 'ddt_documents'
+  | 'crm_directory'
+  | 'purchase_orders'
+  | 'timini_print';
 
 export interface TutorialStep {
   title: string;
@@ -404,6 +408,66 @@ export const APP_TUTORIALS: Record<TutorialContextId, AppTutorialDefinition> = {
       {
         title: 'Backup automatico e riavvio sicuro',
         body: 'Prima di installare e riavviare il sistema, l\'app salva uno snapshot di sicurezza. Utenti, magazzino, foto, file e calendari restano sempre intatti.',
+      },
+    ],
+  },
+  ddt_documents: {
+    id: 'ddt_documents',
+    appTitle: 'DDT & Bolle di Trasporto',
+    subtitle: 'Genera Documenti di Trasporto A4 in PDF direttamente dalle commesse con firme digitali',
+    steps: [
+      {
+        title: 'Genera in un clic dalla commessa',
+        body: 'Scegli una commessa dalla colonna sinistra o dal pulsante in alto: destinatario, destinazione, colli, bancali, pesi e righe merce vengono compilati in automatico.',
+      },
+      {
+        title: 'Firma digitale e PDF pronto per la stampa',
+        body: 'Raccogli la firma del conducente e del destinatario direttamente sullo schermo e scarica il PDF A4 pronto da stampare o inviare.',
+      },
+    ],
+  },
+  crm_directory: {
+    id: 'crm_directory',
+    appTitle: 'Anagrafica Clienti & Fornitori',
+    subtitle: 'Rubrica centralizzata collegata a Commesse, DDT, Magazzino e Ordini Fornitori',
+    steps: [
+      {
+        title: 'Importazione automatica',
+        body: 'Usa "Importa da Commesse e Magazzino" per popolare subito la rubrica con i clienti e fornitori già presenti nel gestionale.',
+      },
+      {
+        title: 'Storico e azioni rapide',
+        body: 'Seleziona una scheda per consultare commesse, DDT, articoli di magazzino e avviare una nuova commessa, un DDT o un ordine fornitore già precompilati.',
+      },
+    ],
+  },
+  purchase_orders: {
+    id: 'purchase_orders',
+    appTitle: 'Ordini Fornitori & Riordino Scorte',
+    subtitle: 'Trasforma gli articoli sotto scorta in ordini PDF e carica le giacenze alla consegna',
+    steps: [
+      {
+        title: 'Riordino automatico dal Magazzino',
+        body: 'Nella scheda "Da riordinare" trovi tutti gli articoli sotto scorta minima: selezionali per creare automaticamente gli ordini raggruppati per fornitore.',
+      },
+      {
+        title: 'Ricevi merce e carica in un clic',
+        body: 'Quando arriva la consegna, clicca su "Ricevi Merce & Carica Magazzino": le giacenze si aggiornano subito e i movimenti di carico vengono registrati automaticamente.',
+      },
+    ],
+  },
+  timini_print: {
+    id: 'timini_print',
+    appTitle: 'TiMini Print — Stampante Etichette Termiche 57mm',
+    subtitle: 'Stampa etichette con QR, Barcode e loghi direttamente via Bluetooth BLE o USB',
+    steps: [
+      {
+        title: 'Connessione diretta Bluetooth TiMini / Tiny Print',
+        body: 'Accendi la mini stampante termica 57mm e clicca "Connetti TiMini BLE": puoi regolare intensità, copie e avanzamento carta direttamente dal gestionale.',
+      },
+      {
+        title: 'Etichette rapide da Magazzino e Commesse',
+        body: 'Importa articoli del Magazzino, bancali o scatole della Commessa in un clic, oppure esporta il PNG 384px / PDF 57mm.',
       },
     ],
   },
