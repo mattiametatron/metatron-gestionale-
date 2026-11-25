@@ -4,13 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Versione aggiornamento (es. 1.0.2 — lascia vuoto per incremento automatico 1.0.<build>)'
+        description: 'Versione aggiornamento (es. 1.0.9 — lascia vuoto per incremento automatico)'
         required: false
         default: ''
       publish_release:
         description: 'Pubblica su GitHub Releases per aggiornamenti automatici in-app'
         type: boolean
         default: true
+      release_repo:
+        description: 'Opzionale: repo Pubblico vuoto solo per Release (es. utente/metatron-releases) lasciando privato il codice'
+        required: false
+        default: ''
   push:
     tags:
       - 'v*'
@@ -45,6 +49,8 @@ jobs:
         shell: bash
         env:
           INPUT_VERSION: ${{ inputs.version }}
+          INPUT_RELEASE_REPO: ${{ inputs.release_repo }}
+          VAR_RELEASE_REPO: ${{ vars.RELEASE_REPO }}
           GITHUB_REPO: ${{ github.repository }}
           RUN_NUM: ${{ github.run_number }}
           REF_NAME: ${{ github.ref_name }}
@@ -61,7 +67,15 @@ jobs:
             const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
             pkg.version = ver;
             fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
-            const [owner, repo] = (process.env.GITHUB_REPO || "").split("/");
+
+            const targetRepo = (
+              process.env.INPUT_RELEASE_REPO ||
+              process.env.VAR_RELEASE_REPO ||
+              process.env.GITHUB_REPO ||
+              ""
+            ).trim().replace(/^https?:\/\/github\.com\//i, "").replace(/\.git$/i, "");
+
+            const [owner, repo] = targetRepo.split("/");
             if (owner && repo) {
               fs.writeFileSync(
                 "desktop-app/update-config.json",
@@ -69,7 +83,8 @@ jobs:
               );
             }
             fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${ver}\n`);
-            console.log("Versione impostata:", ver, "Repo:", process.env.GITHUB_REPO);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `target_repo=${targetRepo}\n`);
+            console.log("Versione:", ver, "Release Repo:", targetRepo);
           '
 
       - name: Installa dipendenze
@@ -105,8 +120,10 @@ jobs:
         if: ${{ github.event_name == 'push' || inputs.publish_release != false }}
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN || secrets.GITHUB_TOKEN }}
           APP_VERSION: ${{ steps.meta.outputs.version }}
+          TARGET_REPO: ${{ steps.meta.outputs.target_repo }}
+          CURRENT_REPO: ${{ github.repository }}
         run: |
           TAG="v${APP_VERSION}"
           FILES=()
@@ -119,12 +136,24 @@ jobs:
             echo "::error::Nessun file eseguibile trovato in release/."
             exit 1
           fi
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "${FILES[@]}" --clobber
+          if [ "$TARGET_REPO" != "$CURRENT_REPO" ]; then
+            if gh release view "$TAG" --repo "$TARGET_REPO" >/dev/null 2>&1; then
+              gh release upload "$TAG" "${FILES[@]}" --repo "$TARGET_REPO" --clobber
+            else
+              gh release create "$TAG" "${FILES[@]}" \
+                --repo "$TARGET_REPO" \
+                --title "METATRON CaricoStudio v${APP_VERSION}" \
+                --notes "Versione desktop Windows METATRON CaricoStudio v${APP_VERSION}. I dati salvati restano al sicuro nella cartella persistente del sistema." \
+                --latest
+            fi
           else
-            gh release create "$TAG" "${FILES[@]}" \
-              --title "METATRON CaricoStudio v${APP_VERSION}" \
-              --notes "Versione desktop Windows METATRON CaricoStudio v${APP_VERSION}. I dati salvati restano al sicuro nella cartella persistente del sistema." \
-              --target "$GITHUB_SHA" \
-              --latest
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              gh release upload "$TAG" "${FILES[@]}" --clobber
+            else
+              gh release create "$TAG" "${FILES[@]}" \
+                --title "METATRON CaricoStudio v${APP_VERSION}" \
+                --notes "Versione desktop Windows METATRON CaricoStudio v${APP_VERSION}. I dati salvati restano al sicuro nella cartella persistente del sistema." \
+                --target "$GITHUB_SHA" \
+                --latest
+            fi
           fi

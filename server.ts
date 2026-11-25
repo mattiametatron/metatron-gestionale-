@@ -4261,15 +4261,20 @@ async function startServer() {
 
       const [owner, repo] = requestedRepo.split('/');
       const ghUrl = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/latest`;
+      const ghToken = String(process.env.METATRON_GITHUB_TOKEN || '').trim();
+      const ghHeaders: Record<string, string> = {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'METATRON-CaricoStudio-Updater',
+      };
+      if (ghToken) {
+        ghHeaders.Authorization = `Bearer ${ghToken}`;
+      }
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 8000);
       let ghResp: globalThis.Response;
       try {
         ghResp = await fetch(ghUrl, {
-          headers: {
-            Accept: 'application/vnd.github+json',
-            'User-Agent': 'METATRON-CaricoStudio-Updater',
-          },
+          headers: ghHeaders,
           signal: controller.signal,
         });
       } finally {
@@ -4282,7 +4287,7 @@ async function startServer() {
         return res.status(404).json({
           ok: false,
           error:
-            'Nessuna GitHub Release trovata per questo repository (o repository privato). Avvia prima il workflow su GitHub con "Pubblica Release" attivo.',
+            'Nessuna Release leggibile trovata: se il repository GitHub è Privato, pubblica gli installer su un secondo repository Pubblico vuoto (es. utente/metatron-releases) lasciando privato il codice, oppure imposta la variabile ambiente METATRON_GITHUB_TOKEN.',
         });
       }
       if (!ghResp.ok) {

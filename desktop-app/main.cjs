@@ -230,11 +230,13 @@ async function runDesktopUpdateCheck(overrideSlug) {
   }
   try {
     broadcastUpdaterState({ repoSlug: repoInfo.slug, error: null });
+    const ghToken = String(process.env.METATRON_GITHUB_TOKEN || '').trim();
     autoUpdater.setFeedURL({
       provider: 'github',
       owner: repoInfo.owner,
       repo: repoInfo.repo,
       releaseType: 'release',
+      ...(ghToken ? { private: true, token: ghToken } : {}),
     });
     await autoUpdater.checkForUpdates();
   } catch (err) {
