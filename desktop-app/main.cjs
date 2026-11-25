@@ -277,7 +277,7 @@ function waitForServerReady(port, timeoutMs = 25000) {
         },
         (res) => {
           res.resume();
-          if (res.statusCode && res.statusCode < 500) {
+          if (res.statusCode === 200) {
             resolve();
           } else {
             retry();
@@ -327,6 +327,9 @@ function resolveAppPaths() {
     candidateServers.find((p) => fs.existsSync(p));
 
   const candidateDists = [
+    path.join(resourcesBase, 'dist-electron', 'web'),
+    path.join(unpackedBase, 'dist-electron', 'web'),
+    path.join(appPath, 'dist-electron', 'web'),
     path.join(resourcesBase, 'dist'),
     path.join(unpackedBase, 'dist'),
     path.join(appPath, 'dist'),

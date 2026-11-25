@@ -14,15 +14,6 @@
   ],
   "extraResources": [
     {
-      "from": "dist",
-      "to": "dist",
-      "filter": [
-        "**/*",
-        "!CaricoStudio_Desktop_Windows.html",
-        "!**/*.map"
-      ]
-    },
-    {
       "from": "dist-electron",
       "to": "dist-electron"
     },

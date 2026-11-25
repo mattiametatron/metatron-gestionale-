@@ -8,6 +8,24 @@ const outFile = path.join(outDir, 'server.cjs');
 const legacyMjs = path.join(outDir, 'server.mjs');
 const pdfkitDataSrc = path.join(rootDir, 'node_modules', 'pdfkit', 'js', 'data');
 const pdfkitDataDst = path.join(outDir, 'data');
+const webSrc = path.join(rootDir, 'dist');
+const webDst = path.join(outDir, 'web');
+
+function copyDirFiltered(src, dst) {
+  fs.mkdirSync(dst, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    if (entry.name === 'CaricoStudio_Desktop_Windows.html' || entry.name.endsWith('.map')) {
+      continue;
+    }
+    const srcPath = path.join(src, entry.name);
+    const dstPath = path.join(dst, entry.name);
+    if (entry.isDirectory()) {
+      copyDirFiltered(srcPath, dstPath);
+    } else if (entry.isFile()) {
+      fs.copyFileSync(srcPath, dstPath);
+    }
+  }
+}
 
 fs.mkdirSync(outDir, { recursive: true });
 if (fs.existsSync(legacyMjs)) {
@@ -34,7 +52,6 @@ await esbuild.build({
   // Tutte le dipendenze runtime (express, ws, dotenv, fflate, pdfkit, @google/genai)
   // vengono incluse direttamente nel bundle CJS così ELECTRON_RUN_AS_NODE non dipende
   // mai da node_modules dentro app.asar su Windows/Linux/macOS.
-  // Restano esterni solo vite (mai usato in production) e le estensioni native opzionali di ws.
   external: [
     'vite',
     'electron',
@@ -53,6 +70,24 @@ if (fs.existsSync(pdfkitDataSrc)) {
     }
   }
   console.log('[METATRON Desktop] Font AFM PDFKit copiati in dist-electron/data');
+}
+
+// Copia l'interfaccia web compilata (dist/) direttamente in dist-electron/web/
+// così viene sempre impacchettata insieme a server.cjs senza essere filtrata da .gitignore o asar.
+if (fs.existsSync(path.join(webSrc, 'index.html'))) {
+  if (fs.existsSync(webDst)) {
+    fs.rmSync(webDst, { recursive: true, force: true });
+  }
+  copyDirFiltered(webSrc, webDst);
+  const copiedIndex = path.join(webDst, 'index.html');
+  if (!fs.existsSync(copiedIndex)) {
+    throw new Error('Copia dist-electron/web/index.html fallita!');
+  }
+  console.log('[METATRON Desktop] Interfaccia web copiata in dist-electron/web (index.html OK)');
+} else {
+  console.warn(
+    '[METATRON Desktop] Avviso: dist/index.html non trovato. Esegui "npm run build" prima di impacchettare il .exe.'
+  );
 }
 
 const stats = fs.statSync(outFile);
