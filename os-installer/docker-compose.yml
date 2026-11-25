@@ -1,0 +1,19 @@
+services:
+  metatron-os:
+    build:
+      context: ..
+      dockerfile: os-installer/Dockerfile
+    container_name: metatron-server-os
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      # Imposta il codice Direzione nel file .env prima di avviare in produzione:
+      - EMPLOYER_ACCESS_CODE=${EMPLOYER_ACCESS_CODE:-}
+    volumes:
+      - metatron_data:/var/lib/metatron
+
+volumes:
+  metatron_data:

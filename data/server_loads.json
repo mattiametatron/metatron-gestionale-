@@ -1,0 +1,17 @@
+[
+  {
+    "id": "load-default",
+    "code": "CAR-001",
+    "title": "Nuovo Carico",
+    "client": "Cliente Spedizione",
+    "destination": "Destinazione Consegna",
+    "carrier": "Motrice 12 EPAL",
+    "departureDate": "2026-11-05",
+    "vehicleMaxWeightKg": 4500,
+    "vehicleMaxPallets": 12,
+    "status": "in_preparazione",
+    "pallets": [],
+    "boxes": [],
+    "items": []
+  }
+]

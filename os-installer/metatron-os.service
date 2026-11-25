@@ -1,0 +1,23 @@
+[Unit]
+Description=METATRON Server OS Core Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=metatron
+Group=metatron
+WorkingDirectory=/opt/metatron-os
+EnvironmentFile=-/var/lib/metatron/.env
+Environment=NODE_ENV=production
+Environment=PORT=3000
+ExecStart=/usr/bin/npx tsx server.ts
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/metatron /opt/metatron-os
+
+[Install]
+WantedBy=multi-user.target

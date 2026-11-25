@@ -1,0 +1,6 @@
+{
+  "name": "CaricoStudio — Check-list, Bancali e Scatole",
+  "description": "Applicazione desktop per la creazione di check-list di magazzino e l'organizzazione della merce in scatole e bancali per la composizione del carico di spedizione.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

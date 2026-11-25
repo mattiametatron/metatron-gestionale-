@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (function() {
+        // Intercept WebSocket connections from @vite/client and redirect port 24678 to current host
+        if (typeof window !== 'undefined' && window.WebSocket) {
+          const _OrigWS = window.WebSocket;
+          const PatchedWS = function(url, protocols) {
+            let finalUrl = url;
+            if (typeof finalUrl === 'string' && finalUrl.includes(':24678')) {
+              const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+              finalUrl = finalUrl.replace(/^(wss?:)\/\/[^/:]+:24678/, `${proto}//${window.location.host}`);
+            }
+            return new _OrigWS(finalUrl, protocols);
+          };
+          PatchedWS.prototype = _OrigWS.prototype;
+          PatchedWS.CONNECTING = _OrigWS.CONNECTING;
+          PatchedWS.OPEN = _OrigWS.OPEN;
+          PatchedWS.CLOSING = _OrigWS.CLOSING;
+          PatchedWS.CLOSED = _OrigWS.CLOSED;
+          window.WebSocket = PatchedWS;
+        }
+
+        // Intercept and suppress benign Vite HMR disconnect logs
+        const _origConsoleError = console.error;
+        console.error = function(...args) {
+          try {
+            const str = args.map(a => {
+              if (!a) return '';
+              if (a.stack) return a.stack;
+              if (a.message) return a.message;
+              return String(a);
+            }).join(' ');
+            if (
+              str.includes('WebSocket') ||
+              str.includes('@vite/client') ||
+              str.includes('vite:ws') ||
+              str.includes('[vite]')
+            ) {
+              return;
+            }
+          } catch {}
+          return _origConsoleError.apply(console, args);
+        };
+
+        window.addEventListener('error', function(e) {
+          if (
+            e &&
+            ((e.message && (e.message.includes('WebSocket') || e.message.includes('@vite/client'))) ||
+             (e.filename && e.filename.includes('@vite/client')))
+          ) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            return true;
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function(e) {
+          if (
+            e && e.reason &&
+            ((typeof e.reason === 'string' && (e.reason.includes('WebSocket') || e.reason.includes('@vite/client'))) ||
+             (typeof e.reason.message === 'string' && (e.reason.message.includes('WebSocket') || e.reason.message.includes('@vite/client'))))
+          ) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+          }
+        }, true);
+      })();
+    </script>
+    <meta name="theme-color" content="#090b16" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="CaricoStudio" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <title>CaricoStudio — Gestionale Check-list, Bancali e Scatole</title>
+    <meta name="description" content="Applicazione gestionale desktop per la creazione di check-list di magazzino e l'organizzazione della merce in scatole e bancali per la composizione del carico di spedizione." />
+    <meta property="og:title" content="CaricoStudio — Gestionale Check-list, Bancali e Scatole" />
+    <meta property="og:description" content="Applicazione gestionale desktop per la creazione di check-list di magazzino e l'organizzazione della merce in scatole e bancali per la composizione del carico di spedizione." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  </head>
+  <body class="bg-[#090b16] text-slate-900 antialiased selection:bg-indigo-600 selection:text-white overflow-hidden">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
