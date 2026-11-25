@@ -300,20 +300,20 @@ export const APP_TUTORIALS: Record<TutorialContextId, AppTutorialDefinition> = {
   },
   warehouse_catalog: {
     id: 'warehouse_catalog',
-    appTitle: 'Magazzino — Articoli, Scorte & Lettore Barcode',
-    subtitle: 'Carica e scarica gli articoli come alla cassa, con lettore codice a barre, foto, file e Preferiti',
+    appTitle: 'Magazzino — Catalogo, Scorte & Lettore Barcode',
+    subtitle: 'Gestione articoli ad alta densità, categorie, scorte minime, allegati e lettore USB',
     steps: [
       {
-        title: 'Modalità Cassa Entrata / Uscita con Lettore a Barre',
-        body: 'Scegli ENTRATA (+) o USCITA (−) e spara il codice a barre con la pistola USB/Bluetooth (o con la fotocamera). Se l\'articolo esiste già la quantità si aggiorna all\'istante.',
+        title: 'Catalogo Tabella / Schede con Inspector laterale',
+        body: 'Cerca e ordina gli articoli per nome, giacenza o utilizzo, filtra per categoria dalla barra laterale e clicca qualsiasi riga per aprire il pannello laterale con movimenti personalizzati, allegati e storico.',
       },
       {
-        title: 'Registrazione automatica dei nuovi articoli',
-        body: 'Se spari un codice nuovo non ancora presente, si apre subito la scheda precompilata dove inserire nome, SKU, quantità, scorta minima, foto e allegati: una volta salvato viene memorizzato e riconosciuto automaticamente tutte le volte successive.',
+        title: 'Lettore Barcode USB / SKU con autocompletamento',
+        body: 'Nella sezione Lettore Barcode scegli Entrata (+) o Uscita (−) e scansiona con la pistola USB/Bluetooth oppure digita il codice. Se il codice è nuovo si apre subito la scheda di registrazione.',
       },
       {
-        title: 'Sezione Preferiti e avvisi Sotto Scorta',
-        body: 'Accendi la stellina ★ sugli articoli più utilizzati per trovarli subito nella sezione Preferiti (e nei tasti rapidi della cassa) e controlla la scheda Sotto Scorta per non rimanere mai senza materiale.',
+        title: 'Preferiti, avvisi Sotto Scorta ed Export CSV',
+        body: 'Contrassegna con la stella ★ gli articoli più usati, controlla gli articoli Sotto Scorta ed esporta in qualsiasi momento catalogo o movimenti in formato CSV per Excel.',
       },
     ],
   },

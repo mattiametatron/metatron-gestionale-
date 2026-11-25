@@ -6,7 +6,6 @@ import {
   Plus,
   Minus,
   Search,
-  Camera,
   Paperclip,
   Trash2,
   Pencil,
@@ -24,16 +23,13 @@ import {
   Layers,
   History,
   Upload,
-  Sparkles,
   MapPin,
-  RefreshCw,
+  LayoutGrid,
+  List,
+  ArrowUpDown,
+  FileSpreadsheet,
+  SlidersHorizontal,
 } from 'lucide-react';
-import type { MultiFormatReader } from '@zxing/library';
-import {
-  createUniversalBarcodeReader,
-  decodeBarcodeFromCanvas,
-  decodeBarcodeFromVideoFrame,
-} from '../utils/barcodeDecoder';
 import {
   AuthUser,
   CargoLoad,
@@ -63,11 +59,13 @@ interface SessionScanEntry {
   unit: string;
   previousQty: number;
   resultingQty: number;
-  photoDataUrl?: string;
   timestamp: string;
   isNewItem?: boolean;
   undone?: boolean;
 }
+
+type WarehouseTab = 'catalog' | 'pos' | 'favorites' | 'low_stock' | 'history';
+type CatalogSort = 'name_asc' | 'qty_asc' | 'qty_desc' | 'used_desc' | 'updated_desc';
 
 const DEFAULT_CATEGORIES = [
   'Ferramenta & Minuteria',
@@ -96,7 +94,6 @@ function formatDateTime(iso: string): string {
       month: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
-      second: '2-digit',
     });
   } catch {
     return iso;
@@ -196,11 +193,11 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
   currentUser,
   onUpdateInventory,
 }) => {
-  const [activeTab, setActiveTab] = useState<
-    'pos' | 'favorites' | 'catalog' | 'low_stock' | 'history'
-  >('pos');
+  const [activeTab, setActiveTab] = useState<WarehouseTab>('catalog');
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+  const [sortBy, setSortBy] = useState<CatalogSort>('name_asc');
 
-  // POS / Barcode Checkout State
+  // USB / Keyboard Barcode Terminal State (zero camera)
   const [scanMode, setScanMode] = useState<'carico' | 'scarico'>('carico');
   const [scanCodeInput, setScanCodeInput] = useState('');
   const [scanQty, setScanQty] = useState<number>(1);
@@ -214,41 +211,26 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
     kind: 'in' | 'out' | 'warn';
     title: string;
     detail: string;
-    photoDataUrl?: string;
     resultingQty?: number;
     unit?: string;
     lowStock?: boolean;
   } | null>(null);
 
-  // Camera Barcode Scanner State (Universal ZXing + Native Fast-Path)
-  const [isCameraOpen, setIsCameraOpen] = useState(false);
-  const [cameraError, setCameraError] = useState<string | null>(null);
-  const [cameraDetectedCode, setCameraDetectedCode] = useState<string | null>(null);
-  const [isDecodingPhoto, setIsDecodingPhoto] = useState(false);
-  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const cameraStreamRef = useRef<MediaStream | null>(null);
-  const scanIntervalRef = useRef<number | null>(null);
-  const scanCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const zxingReaderRef = useRef<MultiFormatReader | null>(null);
-  const isFrameBusyRef = useRef<boolean>(false);
-  const scanTickCountRef = useRef<number>(0);
-  const photoScanInputRef = useRef<HTMLInputElement | null>(null);
-  const lastCameraCodeRef = useRef<{ code: string; at: number }>({
-    code: '',
-    at: 0,
-  });
-
-  // Catalog Filters
+  // Catalog & History Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [historyFilter, setHistoryFilter] = useState<'all' | 'carico' | 'scarico'>(
     'all'
   );
+  const [historySearch, setHistorySearch] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  // Create / Edit / Unknown-Barcode Registration Modal
+  // Side Inspector Drawer + Quick Custom Movement inside Drawer
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [drawerQty, setDrawerQty] = useState<number>(1);
+  const [drawerReason, setDrawerReason] = useState<string>('');
+
+  // Create / Edit Item Modal
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [isFromUnknownScan, setIsFromUnknownScan] = useState(false);
@@ -270,9 +252,6 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
   );
   const [formError, setFormError] = useState<string | null>(null);
 
-  // Quick Preview Lightbox
-  const [previewItem, setPreviewItem] = useState<WarehouseStockItem | null>(null);
-
   const scannerInputRef = useRef<HTMLInputElement | null>(null);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -280,15 +259,15 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
     setScanCommessaCode((prev) => prev || activeLoad?.code || '');
   }, [activeLoad?.code]);
 
-  // Keep barcode input focused in POS mode when autoFocusScanner is enabled
+  // Keep USB barcode wedge input focused in POS mode
   useEffect(() => {
-    if (activeTab === 'pos' && autoFocusScanner && !editorOpen && !previewItem) {
+    if (activeTab === 'pos' && autoFocusScanner && !editorOpen) {
       const t = window.setTimeout(() => {
         scannerInputRef.current?.focus();
       }, 60);
       return () => window.clearTimeout(t);
     }
-  }, [activeTab, autoFocusScanner, editorOpen, previewItem, scanMode]);
+  }, [activeTab, autoFocusScanner, editorOpen, scanMode]);
 
   useEffect(() => {
     if (editorOpen && isFromUnknownScan) {
@@ -299,32 +278,18 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
     }
   }, [editorOpen, isFromUnknownScan]);
 
-  // Cleanup camera stream on unmount
-  const stopCameraScanner = useCallback(() => {
-    if (scanIntervalRef.current !== null) {
-      window.clearInterval(scanIntervalRef.current);
-      scanIntervalRef.current = null;
-    }
-    isFrameBusyRef.current = false;
-    if (cameraStreamRef.current) {
-      cameraStreamRef.current.getTracks().forEach((tr) => tr.stop());
-      cameraStreamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    setIsCameraOpen(false);
-    setCameraDetectedCode(null);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      stopCameraScanner();
-    };
-  }, [stopCameraScanner]);
-
   const items = inventory.items;
   const movements = inventory.movements;
+
+  const selectedItem = useMemo(
+    () => (selectedItemId ? items.find((it) => it.id === selectedItemId) || null : null),
+    [items, selectedItemId]
+  );
+
+  const selectedItemMovements = useMemo(() => {
+    if (!selectedItem) return [];
+    return movements.filter((m) => m.itemId === selectedItem.id).slice(0, 12);
+  }, [movements, selectedItem]);
 
   const categories = useMemo(() => {
     const set = new Set<string>(DEFAULT_CATEGORIES);
@@ -334,8 +299,22 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
     return Array.from(set);
   }, [items]);
 
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    items.forEach((it) => {
+      const key = (it.category || 'Generale').trim();
+      counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    return counts;
+  }, [items]);
+
   const lowStockItems = useMemo(
     () => items.filter((it) => it.quantity <= it.minStock),
+    [items]
+  );
+
+  const outOfStockCount = useMemo(
+    () => items.filter((it) => it.quantity <= 0).length,
     [items]
   );
 
@@ -356,9 +335,25 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
     [items]
   );
 
+  const todayStats = useMemo(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayMovs = movements.filter((m) => m.timestamp.startsWith(todayStr));
+    return {
+      total: todayMovs.length,
+      inCount: todayMovs.filter((m) => m.type === 'carico').length,
+      outCount: todayMovs.filter((m) => m.type === 'scarico').length,
+    };
+  }, [movements]);
+
+  const totalUnitsInStock = useMemo(
+    () => items.reduce((acc, it) => acc + Math.max(0, Number(it.quantity) || 0), 0),
+    [items]
+  );
+
   const filteredCatalog = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return items.filter((it) => {
+    const list = items.filter((it) => {
+      if (activeTab === 'low_stock' && it.quantity > it.minStock) return false;
       if (categoryFilter !== 'all' && it.category !== categoryFilter) return false;
       if (q) {
         const hay = `${it.name} ${it.sku} ${it.barcode || ''} ${it.location || ''} ${it.supplier || ''} ${it.category || ''}`.toLowerCase();
@@ -366,18 +361,52 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
       }
       return true;
     });
-  }, [items, categoryFilter, searchQuery]);
+
+    return [...list].sort((a, b) => {
+      switch (sortBy) {
+        case 'qty_asc':
+          return a.quantity - b.quantity;
+        case 'qty_desc':
+          return b.quantity - a.quantity;
+        case 'used_desc':
+          return (b.usageCount || 0) - (a.usageCount || 0);
+        case 'updated_desc':
+          return (b.updatedAt || '').localeCompare(a.updatedAt || '');
+        case 'name_asc':
+        default:
+          return a.name.localeCompare(b.name, 'it');
+      }
+    });
+  }, [items, activeTab, categoryFilter, searchQuery, sortBy]);
 
   const filteredHistory = useMemo(() => {
-    return movements.filter((m) =>
-      historyFilter === 'all' ? true : m.type === historyFilter
-    );
-  }, [movements, historyFilter]);
+    const q = historySearch.trim().toLowerCase();
+    return movements.filter((m) => {
+      if (historyFilter !== 'all' && m.type !== historyFilter) return false;
+      if (!q) return true;
+      return (
+        m.itemName.toLowerCase().includes(q) ||
+        m.sku.toLowerCase().includes(q) ||
+        (m.commessaCode || '').toLowerCase().includes(q) ||
+        (m.reason || '').toLowerCase().includes(q) ||
+        (m.operatorName || '').toLowerCase().includes(q)
+      );
+    });
+  }, [movements, historyFilter, historySearch]);
 
-  const totalUnitsInStock = useMemo(
-    () => items.reduce((acc, it) => acc + Math.max(0, Number(it.quantity) || 0), 0),
-    [items]
-  );
+  // Live suggestions when typing SKU/name in barcode terminal
+  const scannerSuggestions = useMemo(() => {
+    const q = scanCodeInput.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return items
+      .filter(
+        (it) =>
+          it.sku.toLowerCase().includes(q) ||
+          (it.barcode && it.barcode.toLowerCase().includes(q)) ||
+          it.name.toLowerCase().includes(q)
+      )
+      .slice(0, 5);
+  }, [items, scanCodeInput]);
 
   const findItemByCode = useCallback(
     (rawCode: string): WarehouseStockItem | undefined => {
@@ -392,7 +421,7 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
     [items]
   );
 
-  // Core stock adjustment (used by barcode scanner, favorites quick-buttons, and catalog +/-)
+  // Core stock adjustment
   const applyStockMovement = useCallback(
     (
       item: WarehouseStockItem,
@@ -408,9 +437,8 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
         if (soundEnabled) playScannerBeep('warn');
         setLastScannedBanner({
           kind: 'warn',
-          title: `${item.name} — Giacenza già a 0`,
-          detail: `Impossibile scaricare ${safeQty} ${item.unit}: scorta esaurita in magazzino.`,
-          photoDataUrl: item.photoDataUrl,
+          title: `${item.name} — Giacenza esaurita`,
+          detail: `Impossibile scaricare ${safeQty} ${item.unit}: la giacenza attuale è 0.`,
           resultingQty: 0,
           unit: item.unit,
           lowStock: true,
@@ -448,10 +476,10 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
         previousQty,
         resultingQty,
         reason:
-          reasonOverride ||
+          reasonOverride?.trim() ||
           (mode === 'carico'
-            ? 'Entrata Magazzino (Lettore Barcode / Cassa)'
-            : 'Uscita Magazzino (Lettore Barcode / Cassa)'),
+            ? 'Entrata magazzino'
+            : 'Uscita magazzino'),
         commessaCode: scanCommessaCode.trim() || undefined,
         operatorName: currentUser.name,
         timestamp: nowIso,
@@ -476,12 +504,11 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
       setLastScannedBanner({
         kind: mode === 'carico' ? 'in' : 'out',
         title: item.name,
-        detail: `${mode === 'carico' ? 'ENTRATA' : 'USCITA'} ${
+        detail: `${mode === 'carico' ? 'Entrata' : 'Uscita'} ${
           mode === 'carico' ? '+' : '−'
         }${safeQty} ${item.unit} · ${item.sku}${
-          item.barcode ? ` · Barcode ${item.barcode}` : ''
+          item.barcode ? ` · ${item.barcode}` : ''
         }`,
-        photoDataUrl: item.photoDataUrl,
         resultingQty,
         unit: item.unit,
         lowStock: isLow,
@@ -500,7 +527,6 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
           unit: item.unit,
           previousQty,
           resultingQty,
-          photoDataUrl: item.photoDataUrl,
           timestamp: nowIso,
         },
         ...prev.slice(0, 49),
@@ -517,7 +543,6 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
     ]
   );
 
-  // Open Editor for New Item (or triggered automatically on unknown barcode scan!)
   const openNewItemModal = useCallback(
     (prefilledCode?: string, fromUnknownScan = false) => {
       const cleanCode = (prefilledCode || '').trim();
@@ -530,7 +555,9 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
           : `SKU-${String(items.length + 1).padStart(4, '0')}`
       );
       setFormName('');
-      setFormCategory(DEFAULT_CATEGORIES[0]);
+      setFormCategory(
+        categoryFilter !== 'all' ? categoryFilter : DEFAULT_CATEGORIES[0]
+      );
       setFormUnit('pz');
       setFormQty(Math.max(1, scanQty || 1));
       setFormMinStock(5);
@@ -543,7 +570,7 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
       setFormError(null);
       setEditorOpen(true);
     },
-    [items.length, scanQty]
+    [items.length, scanQty, categoryFilter]
   );
 
   const openEditItemModal = (item: WarehouseStockItem) => {
@@ -566,14 +593,20 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
     setEditorOpen(true);
   };
 
-  // Process scanned barcode (from USB wedge input or camera)
   const processScannedCode = useCallback(
     (rawCode: string) => {
       const code = rawCode.trim();
       if (!code) return;
       const found = findItemByCode(code);
       if (found) {
-        applyStockMovement(found, scanMode, scanQty);
+        applyStockMovement(
+          found,
+          scanMode,
+          scanQty,
+          scanMode === 'carico'
+            ? 'Entrata da lettore barcode USB'
+            : 'Uscita da lettore barcode USB'
+        );
       } else {
         if (soundEnabled) playScannerBeep('new');
         openNewItemModal(code, true);
@@ -583,274 +616,11 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
     [findItemByCode, applyStockMovement, scanMode, scanQty, soundEnabled, openNewItemModal]
   );
 
-  // Keep live refs so an open camera always uses the latest scanMode, scanQty & modal state
-  const processScannedCodeRef = useRef(processScannedCode);
-  useEffect(() => {
-    processScannedCodeRef.current = processScannedCode;
-  }, [processScannedCode]);
-
-  const editorOpenRef = useRef(editorOpen);
-  useEffect(() => {
-    editorOpenRef.current = editorOpen;
-  }, [editorOpen]);
-
   const handleScanSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     processScannedCode(scanCodeInput);
   };
 
-  // Start Universal Cross-Browser Camera Barcode Scanner (works on Chrome Windows/Mac/Android/iOS, Edge, Firefox, Safari)
-  const startCameraScanner = async (overrideDeviceId?: string) => {
-    stopCameraScanner();
-    setCameraError(null);
-    setCameraDetectedCode(null);
-
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraError(
-        'Fotocamera live non disponibile in questo contesto. Usa "Leggi da Foto" oppure una pistola barcode USB/Bluetooth.'
-      );
-      return;
-    }
-
-    let stream: MediaStream | null = null;
-    const targetDeviceId = overrideDeviceId ?? selectedDeviceId;
-
-    try {
-      if (targetDeviceId) {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            deviceId: { exact: targetDeviceId },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-          audio: false,
-        });
-      } else {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: { ideal: 'environment' },
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-            },
-            audio: false,
-          });
-        } catch {
-          // Fallback for desktop webcams that reject facingMode/resolution constraints
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: false,
-          });
-        }
-      }
-    } catch {
-      setCameraError(
-        'Permesso fotocamera negato o nessuna webcam trovata. Concedi il permesso al browser oppure usa "Leggi da Foto" o il lettore USB.'
-      );
-      return;
-    }
-
-    cameraStreamRef.current = stream;
-    setIsCameraOpen(true);
-
-    // Discover available cameras for optional switching
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const cams = devices.filter((d) => d.kind === 'videoinput');
-      setVideoDevices(cams);
-      const activeTrackId = stream.getVideoTracks()[0]?.getSettings()?.deviceId;
-      if (activeTrackId) setSelectedDeviceId(activeTrackId);
-    } catch {
-      // ignore enumeration errors
-    }
-
-    window.setTimeout(() => {
-      if (videoRef.current && cameraStreamRef.current) {
-        videoRef.current.srcObject = cameraStreamRef.current;
-        videoRef.current.play().catch(() => {});
-      }
-    }, 60);
-
-    // Optional native fast-path where available (Chrome Android/macOS)
-    const DetectorCtor = (
-      window as unknown as {
-        BarcodeDetector?: new (opts?: { formats?: string[] }) => {
-          detect: (src: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>>;
-        };
-      }
-    ).BarcodeDetector;
-
-    let nativeDetector: {
-      detect: (src: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>>;
-    } | null = null;
-    if (DetectorCtor) {
-      try {
-        nativeDetector = new DetectorCtor({
-          formats: [
-            'ean_13',
-            'ean_8',
-            'code_128',
-            'code_39',
-            'upc_a',
-            'upc_e',
-            'qr_code',
-            'itf',
-          ],
-        });
-      } catch {
-        nativeDetector = null;
-      }
-    }
-
-    // Always initialize universal pure-JS ZXing decoder (works on EVERY browser including Chrome Windows & iOS!)
-    if (!zxingReaderRef.current) {
-      zxingReaderRef.current = createUniversalBarcodeReader();
-    }
-    if (!scanCanvasRef.current) {
-      scanCanvasRef.current = document.createElement('canvas');
-    }
-    scanTickCountRef.current = 0;
-
-    const handleDetectedValue = (raw: string) => {
-      const val = raw.trim();
-      if (!val) return;
-      const now = Date.now();
-      if (
-        val !== lastCameraCodeRef.current.code ||
-        now - lastCameraCodeRef.current.at > 1800
-      ) {
-        lastCameraCodeRef.current = { code: val, at: now };
-        setCameraDetectedCode(val);
-        window.setTimeout(() => {
-          setCameraDetectedCode((curr) => (curr === val ? null : curr));
-        }, 1600);
-        processScannedCodeRef.current(val);
-      }
-    };
-
-    scanIntervalRef.current = window.setInterval(async () => {
-      if (!cameraStreamRef.current || isFrameBusyRef.current || editorOpenRef.current) {
-        return;
-      }
-      const vid = videoRef.current;
-      if (!vid || vid.readyState < 2 || vid.videoWidth === 0 || vid.videoHeight === 0) {
-        return;
-      }
-      isFrameBusyRef.current = true;
-      try {
-        // 1) Native BarcodeDetector fast-path if present
-        if (nativeDetector) {
-          try {
-            const found = await nativeDetector.detect(vid);
-            if (found.length > 0 && found[0].rawValue) {
-              handleDetectedValue(found[0].rawValue);
-              return;
-            }
-          } catch {
-            // Fall through to universal ZXing decoder
-          }
-        }
-
-        // 2) Universal ZXing decoder on offscreen canvas
-        const canvas = scanCanvasRef.current;
-        const reader = zxingReaderRef.current;
-        if (!canvas || !reader) return;
-
-        scanTickCountRef.current += 1;
-        // Alternate between central laser-line strip (fast & crisp for 1D barcodes) and full frame (great for QR/tilted codes)
-        const decoded = decodeBarcodeFromVideoFrame(
-          reader,
-          vid,
-          canvas,
-          scanTickCountRef.current % 2 === 0
-        );
-        if (decoded) {
-          handleDetectedValue(decoded);
-        }
-      } finally {
-        isFrameBusyRef.current = false;
-      }
-    }, 200);
-  };
-
-  const handleSwitchCamera = () => {
-    if (videoDevices.length < 2) return;
-    const idx = videoDevices.findIndex((d) => d.deviceId === selectedDeviceId);
-    const next = videoDevices[(idx + 1) % videoDevices.length];
-    if (next) {
-      setSelectedDeviceId(next.deviceId);
-      startCameraScanner(next.deviceId);
-    }
-  };
-
-  // Decode barcode/QR directly from a captured or uploaded photo (works even if live camera is blocked)
-  const handleDecodeFromPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-
-    setCameraError(null);
-    setIsDecodingPhoto(true);
-
-    const objectUrl = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      try {
-        if (!zxingReaderRef.current) {
-          zxingReaderRef.current = createUniversalBarcodeReader();
-        }
-        const reader = zxingReaderRef.current;
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        if (!ctx) throw new Error('Canvas unavailable');
-
-        const maxDim = 1400;
-        const scale = Math.min(1, maxDim / Math.max(img.width || 1, img.height || 1));
-        const w = Math.max(1, Math.round(img.width * scale));
-        const h = Math.max(1, Math.round(img.height * scale));
-
-        // Attempt 1: Original orientation
-        canvas.width = w;
-        canvas.height = h;
-        ctx.drawImage(img, 0, 0, w, h);
-        let decoded = decodeBarcodeFromCanvas(reader, canvas);
-
-        // Attempt 2: Rotate 90° clockwise (for vertical barcodes photographed sideways)
-        if (!decoded) {
-          canvas.width = h;
-          canvas.height = w;
-          ctx.save();
-          ctx.translate(h / 2, w / 2);
-          ctx.rotate(Math.PI / 2);
-          ctx.drawImage(img, -w / 2, -h / 2, w, h);
-          ctx.restore();
-          decoded = decodeBarcodeFromCanvas(reader, canvas);
-        }
-
-        if (decoded) {
-          processScannedCode(decoded);
-        } else {
-          if (soundEnabled) playScannerBeep('warn');
-          setCameraError(
-            'Nessun codice a barre rilevato nella foto. Avvicinati al codice, metti bene a fuoco e riprova con buona luce.'
-          );
-        }
-      } catch {
-        setCameraError('Errore durante la lettura del codice a barre dalla foto.');
-      } finally {
-        URL.revokeObjectURL(objectUrl);
-        setIsDecodingPhoto(false);
-      }
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      setIsDecodingPhoto(false);
-      setCameraError('Impossibile aprire la foto selezionata.');
-    };
-    img.src = objectUrl;
-  };
-
-  // Undo a session scan entry cleanly
   const handleUndoSessionEntry = (entry: SessionScanEntry) => {
     if (entry.undone) return;
     const target = items.find((it) => it.id === entry.itemId);
@@ -872,7 +642,7 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
         items: nextItems,
         movements: nextMovements,
       },
-      `Annullata ultima battuta su ${entry.name}`
+      `Annullata operazione su ${entry.name}`
     );
     setSessionLog((prev) =>
       prev.map((s) => (s.id === entry.id ? { ...s, undone: true } : s))
@@ -899,10 +669,9 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
       target ? `Articolo "${target.name}" rimosso dal magazzino` : undefined
     );
     setConfirmDeleteId(null);
-    if (previewItem?.id === itemId) setPreviewItem(null);
+    if (selectedItemId === itemId) setSelectedItemId(null);
   };
 
-  // Photo & Attachment pickers in Editor Modal
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -910,7 +679,7 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
       const compressed = await compressImageFile(file, 900, 0.78);
       setFormPhoto(compressed);
     } catch {
-      setFormError('Impossibile leggere la foto selezionata.');
+      setFormError('Impossibile leggere l\'immagine selezionata.');
     }
     e.target.value = '';
   };
@@ -919,7 +688,7 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 4 * 1024 * 1024) {
-      setFormError('Ogni file allegato all\'articolo può pesare al massimo 4 MB.');
+      setFormError('Ogni file allegato può pesare al massimo 4 MB.');
       e.target.value = '';
       return;
     }
@@ -947,6 +716,80 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
     document.body.appendChild(a);
     a.click();
     a.remove();
+  };
+
+  const handleExportCsv = () => {
+    const isHistory = activeTab === 'history';
+    let csv = '';
+    if (isHistory) {
+      const headers = [
+        'Data/Ora',
+        'Tipo',
+        'SKU',
+        'Articolo',
+        'Quantita',
+        'Unita',
+        'Giacenza Finale',
+        'Commessa',
+        'Causale',
+        'Operatore',
+      ];
+      const rows = filteredHistory.map((m) => [
+        new Date(m.timestamp).toLocaleString('it-IT'),
+        m.type === 'carico' ? 'ENTRATA' : 'USCITA',
+        m.sku,
+        m.itemName,
+        m.type === 'carico' ? `+${m.quantity}` : `-${m.quantity}`,
+        m.unit,
+        m.resultingQty,
+        m.commessaCode || '',
+        m.reason,
+        m.operatorName,
+      ]);
+      csv = [headers, ...rows]
+        .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';'))
+        .join('\n');
+    } else {
+      const headers = [
+        'SKU',
+        'Barcode',
+        'Nome Articolo',
+        'Categoria',
+        'Ubicazione',
+        'Giacenza',
+        'Unita',
+        'Scorta Minima',
+        'Fornitore',
+        'Note',
+      ];
+      const rows = filteredCatalog.map((i) => [
+        i.sku,
+        i.barcode || '',
+        i.name,
+        i.category,
+        i.location || '',
+        i.quantity,
+        i.unit,
+        i.minStock,
+        i.supplier || '',
+        i.notes || '',
+      ]);
+      csv = [headers, ...rows]
+        .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';'))
+        .join('\n');
+    }
+
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${isHistory ? 'Movimenti_Magazzino' : 'Catalogo_Magazzino'}_${new Date()
+      .toISOString()
+      .slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   };
 
   const handleSaveEditor = (e: React.FormEvent) => {
@@ -1022,7 +865,7 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
           quantity: Math.abs(diff),
           previousQty: prevItem.quantity,
           resultingQty: qtyNum,
-          reason: 'Rettifica manuale giacenza in Magazzino',
+          reason: 'Rettifica manuale giacenza',
           commessaCode: scanCommessaCode.trim() || undefined,
           operatorName: currentUser.name,
           timestamp: nowIso,
@@ -1042,7 +885,6 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
       return;
     }
 
-    // Creating a BRAND NEW article -> saved permanently into warehouse & initial movement recorded
     const newId = `stk-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const newItem: WarehouseStockItem = {
       id: newId,
@@ -1078,7 +920,7 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
             resultingQty: qtyNum,
             reason: isFromUnknownScan
               ? 'Nuovo articolo registrato da lettore barcode'
-              : 'Inserimento nuovo articolo in Magazzino',
+              : 'Inserimento nuovo articolo in magazzino',
             commessaCode: scanCommessaCode.trim() || undefined,
             operatorName: currentUser.name,
             timestamp: nowIso,
@@ -1091,16 +933,15 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
         items: [newItem, ...items],
         movements: initMov ? [initMov, ...movements] : movements,
       },
-      `Nuovo articolo "${cleanName}" salvato nel gestionale (${qtyNum} ${newItem.unit})`
+      `Articolo "${cleanName}" salvato (${qtyNum} ${newItem.unit})`
     );
 
     if (isFromUnknownScan) {
       if (soundEnabled) playScannerBeep('in');
       setLastScannedBanner({
         kind: 'in',
-        title: `${cleanName} (Memorizzato nel gestionale)`,
-        detail: `Nuovo codice ${cleanBarcode || cleanSku} registrato · alla prossima scansione verrà riconosciuto automaticamente`,
-        photoDataUrl: newItem.photoDataUrl,
+        title: `${cleanName} — Registrato`,
+        detail: `Codice ${cleanBarcode || cleanSku} memorizzato per le scansioni successive`,
         resultingQty: qtyNum,
         unit: newItem.unit,
         lowStock: qtyNum <= minStockNum,
@@ -1119,7 +960,6 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
             unit: newItem.unit,
             previousQty: 0,
             resultingQty: qtyNum,
-            photoDataUrl: newItem.photoDataUrl,
             timestamp: nowIso,
             isNewItem: true,
           },
@@ -1132,1142 +972,1609 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
     setIsFromUnknownScan(false);
   };
 
+  const navItems: {
+    id: WarehouseTab;
+    label: string;
+    count: number;
+    icon: React.ComponentType<{ className?: string }>;
+    tone?: 'amber' | 'rose';
+  }[] = [
+    { id: 'catalog', label: 'Catalogo Articoli', count: items.length, icon: Layers },
+    { id: 'pos', label: 'Lettore Barcode', count: sessionLog.filter((s) => !s.undone).length, icon: ScanBarcode },
+    { id: 'favorites', label: 'Preferiti', count: favoriteItems.length, icon: Star, tone: 'amber' },
+    {
+      id: 'low_stock',
+      label: 'Sotto Scorta',
+      count: lowStockItems.length,
+      icon: AlertTriangle,
+      tone: lowStockItems.length > 0 ? 'rose' : undefined,
+    },
+    { id: 'history', label: 'Movimenti', count: movements.length, icon: History },
+  ];
+
+  const sectionTitles: Record<WarehouseTab, string> = {
+    catalog: 'Catalogo Magazzino',
+    pos: 'Lettore Barcode USB / SKU',
+    favorites: 'Articoli Preferiti',
+    low_stock: 'Materiali Sotto Scorta',
+    history: 'Registro Movimenti',
+  };
+
+  const getStockStatus = (item: WarehouseStockItem) => {
+    if (item.quantity <= 0) {
+      return { label: 'Esaurito', textClass: 'text-rose-700', barClass: 'bg-rose-600' };
+    }
+    if (item.quantity <= item.minStock) {
+      return { label: 'Sotto scorta', textClass: 'text-amber-700', barClass: 'bg-amber-500' };
+    }
+    return { label: 'Regolare', textClass: 'text-emerald-700', barClass: 'bg-emerald-600' };
+  };
+
   return (
-    <div className="h-full flex flex-col bg-slate-50 text-slate-900 overflow-hidden">
-      {/* Top Bar */}
-      <div className="bg-[#0d101c] text-white px-5 py-3.5 border-b border-white/10 flex flex-wrap items-center justify-between gap-3 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-b from-[#fb9518] to-[#e66c05] flex items-center justify-center shadow-md shrink-0">
-            <Package className="w-5 h-5 text-white" />
+    <div className="h-full flex flex-col md:flex-row bg-slate-50 text-slate-900 overflow-hidden">
+      {/* ===================================================================
+          SIDEBAR SINISTRA STRUTTURATA
+      =================================================================== */}
+      <aside className="w-full md:w-60 bg-white border-b md:border-b-0 md:border-r border-slate-200 flex flex-col shrink-0">
+        <div className="px-4 py-3.5 border-b border-slate-200 flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-slate-900 text-orange-400 flex items-center justify-center shrink-0">
+            <Package className="w-4 h-4" />
           </div>
-          <div>
-            <h2 className="text-sm font-bold tracking-tight">
-              Magazzino &amp; Cassa Lettore Barcode
-            </h2>
-            <p className="text-[11px] text-white/60 font-mono tabular-nums">
-              {items.length} articoli · {totalUnitsInStock} unità totali ·{' '}
-              {favoriteItems.length} preferiti · {lowStockItems.length} sotto scorta
-            </p>
+          <span className="text-sm font-bold text-slate-900 tracking-tight truncate">
+            Magazzino
+          </span>
+        </div>
+
+        {/* Navigazione principale */}
+        <nav className="p-2 flex md:flex-col gap-1 overflow-x-auto md:overflow-x-visible no-scrollbar">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const active = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setActiveTab(item.id)}
+                className={`px-3 py-2 rounded-lg text-xs font-semibold flex items-center justify-between gap-2 cursor-pointer whitespace-nowrap transition-colors shrink-0 md:shrink ${
+                  active
+                    ? 'bg-slate-900 text-white'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                }`}
+              >
+                <span className="flex items-center gap-2 truncate">
+                  <Icon
+                    className={`w-3.5 h-3.5 shrink-0 ${
+                      active
+                        ? 'text-orange-400'
+                        : item.tone === 'rose'
+                        ? 'text-rose-600'
+                        : item.tone === 'amber'
+                        ? 'text-amber-500'
+                        : 'text-slate-400'
+                    }`}
+                  />
+                  <span className="truncate">{item.label}</span>
+                </span>
+                <span
+                  className={`font-mono text-[11px] tabular-nums ${
+                    active ? 'text-slate-300' : 'text-slate-400'
+                  }`}
+                >
+                  {item.count}
+                </span>
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Categorie rapide nella sidebar (desktop) */}
+        <div className="hidden md:flex flex-col flex-1 min-h-0 border-t border-slate-200 mt-1">
+          <div className="px-4 pt-3 pb-1.5 text-[11px] font-semibold text-slate-400 flex items-center justify-between">
+            <span>Categorie</span>
+            {categoryFilter !== 'all' && (
+              <button
+                type="button"
+                onClick={() => setCategoryFilter('all')}
+                className="text-orange-600 hover:underline cursor-pointer font-medium"
+              >
+                Tutte
+              </button>
+            )}
+          </div>
+          <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
+            <button
+              type="button"
+              onClick={() => {
+                setCategoryFilter('all');
+                if (activeTab !== 'catalog' && activeTab !== 'low_stock') {
+                  setActiveTab('catalog');
+                }
+              }}
+              className={`w-full px-2.5 py-1.5 rounded-md text-xs flex items-center justify-between gap-2 cursor-pointer transition-colors ${
+                categoryFilter === 'all'
+                  ? 'bg-slate-100 text-slate-900 font-semibold'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+            >
+              <span className="truncate">Tutte le categorie</span>
+              <span className="font-mono text-[11px] text-slate-400 tabular-nums">
+                {items.length}
+              </span>
+            </button>
+            {categories.map((cat) => {
+              const count = categoryCounts.get(cat) || 0;
+              const isSelected = categoryFilter === cat;
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => {
+                    setCategoryFilter(cat);
+                    if (activeTab !== 'catalog' && activeTab !== 'low_stock') {
+                      setActiveTab('catalog');
+                    }
+                  }}
+                  className={`w-full px-2.5 py-1.5 rounded-md text-xs flex items-center justify-between gap-2 cursor-pointer transition-colors ${
+                    isSelected
+                      ? 'bg-orange-50 text-orange-900 font-semibold'
+                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  }`}
+                >
+                  <span className="truncate">{cat}</span>
+                  <span className="font-mono text-[11px] text-slate-400 tabular-nums">
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Footer Sidebar */}
+        <div className="hidden md:flex items-center justify-between gap-2 px-3 py-2.5 border-t border-slate-200 bg-slate-50/70">
           <button
             type="button"
             onClick={() => setSoundEnabled((s) => !s)}
-            className="p-2 rounded-lg bg-white/[0.08] hover:bg-white/[0.15] text-white/80 hover:text-white cursor-pointer transition-colors"
-            title={soundEnabled ? 'Disattiva bip lettore' : 'Attiva bip lettore'}
+            className="px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-slate-600 hover:text-slate-900 hover:bg-white border border-transparent hover:border-slate-200 flex items-center gap-1.5 cursor-pointer transition-colors"
+            title={soundEnabled ? 'Disattiva segnale acustico' : 'Attiva segnale acustico'}
           >
             {soundEnabled ? (
-              <Volume2 className="w-4 h-4 text-emerald-400" />
+              <Volume2 className="w-3.5 h-3.5 text-emerald-600" />
             ) : (
-              <VolumeX className="w-4 h-4 text-white/45" />
+              <VolumeX className="w-3.5 h-3.5 text-slate-400" />
             )}
+            <span>{soundEnabled ? 'Bip attivo' : 'Bip muto'}</span>
           </button>
+
           <button
             type="button"
-            onClick={() => openNewItemModal('', false)}
-            className="px-3.5 py-2 rounded-lg bg-orange-500 hover:bg-orange-400 text-slate-950 text-xs font-extrabold flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm"
+            onClick={handleExportCsv}
+            className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 flex items-center gap-1 cursor-pointer transition-colors"
+            title="Esporta elenco attuale in CSV Excel"
           >
-            <Plus className="w-4 h-4 stroke-[2.5]" />
-            <span>Nuovo Articolo</span>
+            <FileSpreadsheet className="w-3.5 h-3.5 text-slate-500" />
+            <span>CSV</span>
           </button>
         </div>
-      </div>
+      </aside>
 
-      {/* Navigation Tabs */}
-      <div className="bg-white border-b border-slate-200 px-5 flex items-center gap-1 overflow-x-auto no-scrollbar shrink-0">
-        {[
-          {
-            id: 'pos' as const,
-            label: 'Cassa Lettore Barcode',
-            icon: ScanBarcode,
-          },
-          {
-            id: 'favorites' as const,
-            label: `Preferiti (${favoriteItems.length})`,
-            icon: Star,
-          },
-          {
-            id: 'catalog' as const,
-            label: `Catalogo Magazzino (${items.length})`,
-            icon: Layers,
-          },
-          {
-            id: 'low_stock' as const,
-            label: `Sotto Scorta (${lowStockItems.length})`,
-            icon: AlertTriangle,
-          },
-          {
-            id: 'history' as const,
-            label: `Movimenti (${movements.length})`,
-            icon: History,
-          },
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const active = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-3.5 py-3 text-xs font-bold flex items-center gap-1.5 border-b-2 whitespace-nowrap cursor-pointer transition-colors ${
-                active
-                  ? 'border-orange-500 text-slate-950'
-                  : 'border-transparent text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              <Icon
-                className={`w-3.5 h-3.5 ${
-                  tab.id === 'favorites' && active
-                    ? 'text-amber-500 fill-amber-400'
-                    : tab.id === 'low_stock' && lowStockItems.length > 0
-                    ? 'text-rose-600'
-                    : ''
-                }`}
-              />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
+      {/* ===================================================================
+          AREA PRINCIPALE + INSPECTOR LATERALE
+      =================================================================== */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Top Bar 1 riga */}
+        <header className="bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between gap-4 shrink-0">
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold text-slate-900 truncate">
+              {sectionTitles[activeTab]}
+            </h2>
+            <p className="text-xs text-slate-500 font-mono tabular-nums mt-0.5 truncate">
+              {items.length} articoli · {totalUnitsInStock} unità totali ·{' '}
+              {lowStockItems.length} sotto scorta · {todayStats.total} movimenti oggi
+            </p>
+          </div>
 
-      {/* Body */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5">
-        {/* ===================================================================
-            TAB 1: CASSA LETTORE BARCODE (STILE CASSA SUPERMERCATO)
-        =================================================================== */}
-        {activeTab === 'pos' && (
-          <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-5">
-            {/* Left / Main POS Terminal */}
-            <div className="lg:col-span-7 space-y-4">
-              {/* Big ENTRATA / USCITA Mode Toggle */}
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setScanMode('carico')}
-                  className={`p-4 rounded-2xl border-2 text-left flex items-center gap-3 cursor-pointer transition-all ${
-                    scanMode === 'carico'
-                      ? 'bg-emerald-600 border-emerald-700 text-white shadow-md'
-                      : 'bg-white border-slate-200 text-slate-700 hover:border-emerald-400'
-                  }`}
-                >
-                  <div
-                    className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${
-                      scanMode === 'carico'
-                        ? 'bg-white/20 text-white'
-                        : 'bg-emerald-50 text-emerald-600'
-                    }`}
-                  >
-                    <ArrowDownCircle className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <div className="text-sm font-extrabold tracking-tight">
-                      ENTRATA (Carico +)
-                    </div>
-                    <div
-                      className={`text-[11px] mt-0.5 ${
-                        scanMode === 'carico' ? 'text-emerald-100' : 'text-slate-500'
-                      }`}
-                    >
-                      Spara il codice per caricare in magazzino
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setScanMode('scarico')}
-                  className={`p-4 rounded-2xl border-2 text-left flex items-center gap-3 cursor-pointer transition-all ${
-                    scanMode === 'scarico'
-                      ? 'bg-rose-600 border-rose-700 text-white shadow-md'
-                      : 'bg-white border-slate-200 text-slate-700 hover:border-rose-400'
-                  }`}
-                >
-                  <div
-                    className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${
-                      scanMode === 'scarico'
-                        ? 'bg-white/20 text-white'
-                        : 'bg-rose-50 text-rose-600'
-                    }`}
-                  >
-                    <ArrowUpCircle className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <div className="text-sm font-extrabold tracking-tight">
-                      USCITA (Scarico −)
-                    </div>
-                    <div
-                      className={`text-[11px] mt-0.5 ${
-                        scanMode === 'scarico' ? 'text-rose-100' : 'text-slate-500'
-                      }`}
-                    >
-                      Spara il codice per togliere dal magazzino
-                    </div>
-                  </div>
-                </button>
-              </div>
-
-              {/* Barcode Scanner Input Box */}
-              <form
-                onSubmit={handleScanSubmit}
-                className={`bg-white rounded-2xl border-2 p-5 space-y-4 shadow-xs transition-colors ${
-                  scanMode === 'carico'
-                    ? 'border-emerald-300'
-                    : 'border-rose-300'
-                }`}
+          <div className="flex items-center gap-2 shrink-0">
+            {activeTab !== 'pos' && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('pos')}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 flex items-center gap-1.5 cursor-pointer whitespace-nowrap transition-colors"
               >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <ScanBarcode
-                      className={`w-5 h-5 ${
-                        scanMode === 'carico' ? 'text-emerald-600' : 'text-rose-600'
-                      }`}
-                    />
-                    <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800">
-                      Lettore Codice a Barre / SKU
-                    </span>
-                  </div>
+                <ScanBarcode className="w-3.5 h-3.5 text-slate-500" />
+                <span>Lettore Barcode</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => openNewItemModal('', false)}
+              className="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer whitespace-nowrap transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5 text-orange-400" />
+              <span>Nuovo Articolo</span>
+            </button>
+          </div>
+        </header>
 
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={autoFocusScanner}
-                        onChange={(e) => setAutoFocusScanner(e.target.checked)}
-                        className="rounded accent-orange-500"
-                      />
-                      <span>Pistola sempre pronta</span>
-                    </label>
-                    <input
-                      ref={photoScanInputRef}
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={handleDecodeFromPhoto}
-                      className="hidden"
-                    />
-                    <button
-                      type="button"
-                      disabled={isDecodingPhoto}
-                      onClick={() => photoScanInputRef.current?.click()}
-                      className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
-                      title="Scatta o carica una foto del codice a barre per decodificarlo"
-                    >
-                      <ImageIcon className="w-3.5 h-3.5" />
-                      <span>{isDecodingPhoto ? 'Lettura...' : 'Leggi da Foto'}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        isCameraOpen ? stopCameraScanner() : startCameraScanner()
-                      }
-                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
-                        isCameraOpen
-                          ? 'bg-rose-100 text-rose-800 hover:bg-rose-200'
-                          : 'bg-slate-900 text-white hover:bg-slate-800'
-                      }`}
-                    >
-                      <Camera className="w-3.5 h-3.5" />
-                      <span>{isCameraOpen ? 'Chiudi Camera' : 'Usa Fotocamera'}</span>
-                    </button>
+        {/* Contenuto + Side Drawer */}
+        <div className="flex-1 min-h-0 flex overflow-hidden">
+          <main className="flex-1 min-w-0 overflow-y-auto p-5">
+            {/* ===============================================================
+                TAB 1 & TAB 4: CATALOGO ARTICOLI & SOTTO SCORTA
+            =============================================================== */}
+            {(activeTab === 'catalog' || activeTab === 'low_stock') && (
+              <div className="max-w-7xl mx-auto space-y-4">
+                {/* 4 KPI Piani a singola elevazione */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="bg-white border border-slate-200 rounded-xl px-4 py-3">
+                    <div className="text-xs text-slate-500">Articoli in catalogo</div>
+                    <div className="text-xl font-bold font-mono tabular-nums text-slate-900 mt-1">
+                      {items.length}
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                      {favoriteItems.length} preferiti salvati
+                    </div>
                   </div>
-                </div>
-
-                {/* Big Scanner Input */}
-                <div className="flex gap-2">
-                  <input
-                    ref={scannerInputRef}
-                    type="text"
-                    value={scanCodeInput}
-                    onChange={(e) => setScanCodeInput(e.target.value)}
-                    placeholder="Spara il codice a barre o digita SKU e premi Invio..."
-                    autoComplete="off"
-                    className="flex-1 px-4 py-3.5 text-base font-mono font-bold bg-slate-50 border-2 border-slate-300 rounded-xl text-slate-900 placeholder:text-slate-400 placeholder:font-sans placeholder:font-normal focus:bg-white focus:outline-none focus:border-slate-900"
-                  />
+                  <div className="bg-white border border-slate-200 rounded-xl px-4 py-3">
+                    <div className="text-xs text-slate-500">Unità complessive</div>
+                    <div className="text-xl font-bold font-mono tabular-nums text-slate-900 mt-1">
+                      {totalUnitsInStock}
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                      su {categories.filter((c) => (categoryCounts.get(c) || 0) > 0).length}{' '}
+                      categorie attive
+                    </div>
+                  </div>
                   <button
-                    type="submit"
-                    className={`px-5 py-3.5 rounded-xl text-white text-sm font-extrabold cursor-pointer transition-colors shrink-0 ${
-                      scanMode === 'carico'
-                        ? 'bg-emerald-600 hover:bg-emerald-700'
-                        : 'bg-rose-600 hover:bg-rose-700'
+                    type="button"
+                    onClick={() =>
+                      setActiveTab(activeTab === 'low_stock' ? 'catalog' : 'low_stock')
+                    }
+                    className={`text-left border rounded-xl px-4 py-3 cursor-pointer transition-colors ${
+                      lowStockItems.length > 0
+                        ? 'bg-white border-amber-300 hover:bg-amber-50/40'
+                        : 'bg-white border-slate-200 hover:bg-slate-50'
                     }`}
                   >
-                    {scanMode === 'carico' ? '+ Carica' : '− Togli'}
+                    <div className="text-xs text-slate-500">Sotto scorta minima</div>
+                    <div
+                      className={`text-xl font-bold font-mono tabular-nums mt-1 ${
+                        lowStockItems.length > 0 ? 'text-rose-700' : 'text-emerald-700'
+                      }`}
+                    >
+                      {lowStockItems.length}
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                      {outOfStockCount > 0
+                        ? `${outOfStockCount} completamente esauriti`
+                        : 'Nessun articolo a zero'}
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('history')}
+                    className="text-left bg-white border border-slate-200 hover:bg-slate-50 rounded-xl px-4 py-3 cursor-pointer transition-colors"
+                  >
+                    <div className="text-xs text-slate-500">Movimenti oggi</div>
+                    <div className="text-xl font-bold font-mono tabular-nums text-slate-900 mt-1">
+                      {todayStats.total}
+                    </div>
+                    <div className="text-[11px] text-slate-500 font-mono tabular-nums mt-0.5">
+                      +{todayStats.inCount} entrate · −{todayStats.outCount} uscite
+                    </div>
                   </button>
                 </div>
 
-                {/* Quantity multiplier & optional Commessa */}
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-1 items-end">
-                  <div className="sm:col-span-7">
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                      Quantità per ogni scansione
-                    </label>
-                    <div className="flex items-center gap-1.5">
-                      {[1, 2, 5, 10].map((preset) => (
-                        <button
-                          key={preset}
-                          type="button"
-                          onClick={() => setScanQty(preset)}
-                          className={`px-2.5 py-1.5 rounded-lg font-mono text-xs font-bold border cursor-pointer transition-colors ${
-                            scanQty === preset
-                              ? 'bg-slate-900 text-white border-slate-900'
-                              : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
-                          }`}
-                        >
-                          ×{preset}
-                        </button>
-                      ))}
+                {/* Barra ricerca, ordinamento e cambio vista */}
+                <div className="flex flex-wrap items-center justify-between gap-2.5">
+                  <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[240px]">
+                    <div className="relative flex-1 min-w-[220px] max-w-md">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                       <input
-                        type="number"
-                        min={1}
-                        step={1}
-                        value={scanQty}
-                        onChange={(e) =>
-                          setScanQty(Math.max(1, Number(e.target.value) || 1))
-                        }
-                        className="w-20 px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg text-center focus:bg-white focus:outline-none focus:border-slate-900"
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Cerca nome, SKU, barcode, scaffale o fornitore..."
+                        className="w-full pl-8 pr-8 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-slate-900"
                       />
+                      {searchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setSearchQuery('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                          aria-label="Pulisci ricerca"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
-                  </div>
-                  <div className="sm:col-span-5">
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                      Commessa associata (opz.)
-                    </label>
+
                     <select
-                      value={scanCommessaCode}
-                      onChange={(e) => setScanCommessaCode(e.target.value)}
-                      className="w-full px-2.5 py-1.5 text-xs font-mono bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-slate-900"
+                      value={categoryFilter}
+                      onChange={(e) => setCategoryFilter(e.target.value)}
+                      className="px-2.5 py-2 text-xs font-medium bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:border-slate-900"
                     >
-                      <option value="">Magazzino generale</option>
-                      {loads.map((ld) => (
-                        <option key={ld.id} value={ld.code}>
-                          {ld.code} — {ld.title}
+                      <option value="all">Tutte le categorie</option>
+                      {categories.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
                         </option>
                       ))}
                     </select>
-                  </div>
-                </div>
 
-                {/* Live Universal Camera Barcode Viewfinder */}
-                {isCameraOpen && (
-                  <div className="rounded-xl overflow-hidden bg-slate-950 border border-slate-800 relative">
-                    <video
-                      ref={videoRef}
-                      playsInline
-                      muted
-                      autoPlay
-                      className="w-full max-h-64 object-cover"
-                    />
-                    {/* Target laser guide */}
-                    <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 h-0.5 bg-rose-500/90 shadow-[0_0_12px_rgba(244,63,94,0.95)] pointer-events-none" />
-                    <div className="absolute inset-x-8 top-[22%] bottom-[22%] border border-white/25 rounded-lg pointer-events-none" />
-
-                    {/* Top-left live status */}
-                    <div className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-md bg-black/70 text-white text-[11px] font-semibold flex items-center gap-1.5 backdrop-blur-xs">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                      <span>
-                        Inquadra barcode o QR (EAN, Code-128, UPC, QR)
-                      </span>
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg">
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as CatalogSort)}
+                        className="text-xs font-medium text-slate-700 bg-transparent focus:outline-none cursor-pointer"
+                      >
+                        <option value="name_asc">Nome (A–Z)</option>
+                        <option value="qty_asc">Giacenza crescente</option>
+                        <option value="qty_desc">Giacenza decrescente</option>
+                        <option value="used_desc">Più movimentati</option>
+                        <option value="updated_desc">Aggiornati di recente</option>
+                      </select>
                     </div>
+                  </div>
 
-                    {/* Camera switcher button if multiple cameras exist */}
-                    {videoDevices.length > 1 && (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs font-mono text-slate-500 tabular-nums hidden sm:inline">
+                      {filteredCatalog.length} risultati
+                    </span>
+                    <div className="inline-flex items-center p-0.5 bg-slate-200/80 rounded-lg">
                       <button
                         type="button"
-                        onClick={handleSwitchCamera}
-                        className="absolute top-2.5 right-2.5 px-2.5 py-1 rounded-md bg-black/70 hover:bg-black/90 text-white text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer backdrop-blur-xs transition-colors"
+                        onClick={() => setViewMode('table')}
+                        className={`px-2.5 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors ${
+                          viewMode === 'table'
+                            ? 'bg-white text-slate-900 shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                        title="Vista Tabella ad alta densità"
                       >
-                        <RefreshCw className="w-3 h-3" />
-                        <span>Cambia Camera</span>
+                        <List className="w-3.5 h-3.5" />
+                        <span>Tabella</span>
                       </button>
-                    )}
-
-                    {/* Instant green confirmation overlay on decode */}
-                    {cameraDetectedCode && (
-                      <div className="absolute bottom-2.5 inset-x-3 px-3 py-1.5 rounded-lg bg-emerald-600/95 text-white text-xs font-mono font-bold text-center shadow-lg">
-                        ✓ Codice letto: {cameraDetectedCode}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {cameraError && (
-                  <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
-                    {cameraError}
-                  </div>
-                )}
-
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Se il codice a barre o lo SKU esiste già, la giacenza si aggiorna subito. Se è un codice nuovo, si apre la scheda di registrazione e viene memorizzato direttamente sul gestionale per tutte le volte successive.
-                </p>
-              </form>
-
-              {/* Live Checkout Display Banner */}
-              {lastScannedBanner && (
-                <div
-                  className={`rounded-2xl border p-4 flex items-center gap-4 shadow-2xs ${
-                    lastScannedBanner.kind === 'in'
-                      ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
-                      : lastScannedBanner.kind === 'out'
-                      ? 'bg-rose-50 border-rose-300 text-rose-950'
-                      : 'bg-amber-50 border-amber-300 text-amber-950'
-                  }`}
-                >
-                  {lastScannedBanner.photoDataUrl ? (
-                    <img
-                      src={lastScannedBanner.photoDataUrl}
-                      alt={lastScannedBanner.title}
-                      className="w-16 h-16 rounded-xl object-cover border border-black/10 shrink-0"
-                    />
-                  ) : (
-                    <div className="w-14 h-14 rounded-xl bg-white/70 border border-black/10 flex items-center justify-center shrink-0">
-                      <CheckCircle2 className="w-7 h-7" />
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-extrabold truncate">
-                      {lastScannedBanner.title}
-                    </div>
-                    <div className="text-xs opacity-85 mt-0.5">
-                      {lastScannedBanner.detail}
-                    </div>
-                    {lastScannedBanner.lowStock && (
-                      <div className="text-[11px] font-bold text-rose-700 mt-1 flex items-center gap-1">
-                        <AlertTriangle className="w-3.5 h-3.5" />
-                        Attenzione: articolo sotto la scorta minima!
-                      </div>
-                    )}
-                  </div>
-                  {lastScannedBanner.resultingQty !== undefined && (
-                    <div className="text-right shrink-0 pl-2">
-                      <div className="text-[10px] font-bold uppercase opacity-65">
-                        In Magazzino
-                      </div>
-                      <div className="text-2xl font-black font-mono tabular-nums">
-                        {lastScannedBanner.resultingQty}{' '}
-                        <span className="text-xs font-semibold">
-                          {lastScannedBanner.unit}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Quick Favorites Strip right inside POS */}
-              {favoriteItems.length > 0 && (
-                <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                      <Star className="w-4 h-4 text-amber-500 fill-amber-400" />
-                      Tasti Rapidi Preferiti (un click per {scanMode === 'carico' ? 'caricare' : 'togliere'})
-                    </h3>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('favorites')}
-                      className="text-[11px] font-semibold text-orange-600 hover:underline cursor-pointer"
-                    >
-                      Vedi tutti ({favoriteItems.length})
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {favoriteItems.slice(0, 6).map((fav) => (
                       <button
-                        key={fav.id}
                         type="button"
-                        onClick={() => applyStockMovement(fav, scanMode, scanQty)}
-                        className="p-2.5 rounded-xl border border-slate-200 hover:border-orange-400 hover:bg-orange-50/40 text-left flex items-center gap-2.5 cursor-pointer transition-colors"
+                        onClick={() => setViewMode('grid')}
+                        className={`px-2.5 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors ${
+                          viewMode === 'grid'
+                            ? 'bg-white text-slate-900 shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                        title="Vista Schede"
                       >
-                        {fav.photoDataUrl ? (
-                          <img
-                            src={fav.photoDataUrl}
-                            alt={fav.name}
-                            className="w-9 h-9 rounded-lg object-cover shrink-0 border border-slate-200"
-                          />
-                        ) : (
-                          <div className="w-9 h-9 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-                            <Package className="w-4 h-4" />
-                          </div>
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <div className="text-xs font-bold text-slate-900 truncate">
-                            {fav.name}
-                          </div>
-                          <div className="text-[10px] font-mono text-slate-500 tabular-nums">
-                            {fav.quantity} {fav.unit} · {scanMode === 'carico' ? `+${scanQty}` : `−${scanQty}`}
-                          </div>
-                        </div>
+                        <LayoutGrid className="w-3.5 h-3.5" />
+                        <span>Schede</span>
                       </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Right: Scontrino / Battute Sessione */}
-            <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 shadow-2xs flex flex-col overflow-hidden max-h-[640px]">
-              <div className="px-4 py-3 bg-slate-900 text-white flex items-center justify-between shrink-0">
-                <div>
-                  <div className="text-xs font-extrabold uppercase tracking-wider">
-                    Scontrino Battute Sessione
-                  </div>
-                  <div className="text-[10px] text-white/60 font-mono tabular-nums">
-                    {sessionLog.filter((s) => !s.undone).length} operazioni registrate
-                  </div>
-                </div>
-                {sessionLog.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setSessionLog([])}
-                    className="text-[11px] text-white/70 hover:text-white cursor-pointer"
-                  >
-                    Pulisci vista
-                  </button>
-                )}
-              </div>
-
-              <div className="flex-1 overflow-y-auto divide-y divide-slate-100 p-2">
-                {sessionLog.length === 0 ? (
-                  <div className="py-16 px-6 text-center space-y-2">
-                    <ScanBarcode className="w-9 h-9 text-slate-300 mx-auto" />
-                    <div className="text-xs font-bold text-slate-600">
-                      Pronto per la prima scansione
                     </div>
-                    <p className="text-[11px] text-slate-400">
-                      Ogni articolo scansionato con il lettore a barre o cliccato dai Preferiti apparirà qui in tempo reale con stato Entrata/Uscita.
+                  </div>
+                </div>
+
+                {/* Lista Articoli (Empty / Tabella / Schede) */}
+                {filteredCatalog.length === 0 ? (
+                  <div className="bg-white border border-slate-200 rounded-xl p-12 text-center space-y-3">
+                    <Package className="w-9 h-9 text-slate-300 mx-auto" />
+                    <div className="text-sm font-semibold text-slate-800">
+                      {activeTab === 'low_stock'
+                        ? 'Nessun articolo sotto scorta minima'
+                        : 'Nessun articolo corrisponde ai filtri'}
+                    </div>
+                    <p className="text-xs text-slate-500 max-w-md mx-auto">
+                      {activeTab === 'low_stock'
+                        ? 'Tutte le giacenze sono sopra la soglia minima configurata.'
+                        : 'Aggiungi un nuovo articolo oppure modifica i criteri di ricerca.'}
                     </p>
-                  </div>
-                ) : (
-                  sessionLog.map((entry) => (
-                    <div
-                      key={entry.id}
-                      className={`p-3 rounded-xl flex items-center justify-between gap-2.5 ${
-                        entry.undone ? 'opacity-45 line-through' : ''
-                      }`}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className={`text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded ${
-                              entry.mode === 'carico'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-rose-100 text-rose-800'
-                            }`}
-                          >
-                            {entry.mode === 'carico' ? 'ENTRATA' : 'USCITA'}
-                          </span>
-                          {entry.isNewItem && (
-                            <span className="text-[10px] font-bold text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded">
-                              NUOVO
-                            </span>
-                          )}
-                          <span className="font-mono text-[10px] text-slate-400 tabular-nums">
-                            {formatDateTime(entry.timestamp)}
-                          </span>
-                        </div>
-                        <div className="text-xs font-bold text-slate-900 truncate mt-1">
-                          {entry.name}
-                        </div>
-                        <div className="text-[11px] font-mono text-slate-500 tabular-nums">
-                          {entry.sku} · {entry.previousQty} →{' '}
-                          <strong className="text-slate-900">
-                            {entry.resultingQty} {entry.unit}
-                          </strong>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span
-                          className={`font-mono text-sm font-black tabular-nums ${
-                            entry.mode === 'carico'
-                              ? 'text-emerald-700'
-                              : 'text-rose-700'
-                          }`}
-                        >
-                          {entry.mode === 'carico' ? '+' : '−'}
-                          {entry.quantity}
-                        </span>
-                        {!entry.undone && (
-                          <button
-                            type="button"
-                            onClick={() => handleUndoSessionEntry(entry)}
-                            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-800 cursor-pointer"
-                            title="Annulla questa battuta"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ===================================================================
-            TAB 2: PREFERITI (ARTICOLI PIU UTILIZZATI)
-        =================================================================== */}
-        {activeTab === 'favorites' && (
-          <div className="max-w-6xl mx-auto space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
-                  <Star className="w-4 h-4 text-amber-500 fill-amber-400" />
-                  Articoli Preferiti — Accesso Rapido Entrata / Uscita
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Carica o scarica con un click gli articoli che usi più spesso in magazzino
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => openNewItemModal('', false)}
-                className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Nuovo Articolo</span>
-              </button>
-            </div>
-
-            {favoriteItems.length === 0 ? (
-              <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center space-y-2">
-                <Star className="w-9 h-9 text-amber-300 mx-auto" />
-                <div className="text-sm font-bold text-slate-700">
-                  Nessun articolo nei Preferiti
-                </div>
-                <p className="text-xs text-slate-500 max-w-md mx-auto">
-                  Clicca la stellina ★ su qualsiasi articolo nel Catalogo Magazzino (o mentre ne registri uno nuovo) per tenerlo sempre a portata di mano qui e nella Cassa Lettore.
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {favoriteItems.map((item) => {
-                  const isLow = item.quantity <= item.minStock;
-                  return (
-                    <div
-                      key={item.id}
-                      className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-4 flex flex-col justify-between gap-3"
-                    >
-                      <div className="flex items-start gap-3">
+                    <div className="pt-1 flex items-center justify-center gap-2">
+                      {(searchQuery || categoryFilter !== 'all') && (
                         <button
                           type="button"
-                          onClick={() => setPreviewItem(item)}
-                          className="w-14 h-14 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0 cursor-pointer"
+                          onClick={() => {
+                            setSearchQuery('');
+                            setCategoryFilter('all');
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
                         >
-                          {item.photoDataUrl ? (
-                            <img
-                              src={item.photoDataUrl}
-                              alt={item.name}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <Package className="w-6 h-6 text-slate-400" />
-                          )}
+                          Ripristina filtri
                         </button>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-1">
-                            <div className="text-sm font-bold text-slate-900 truncate">
-                              {item.name}
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => openNewItemModal('', false)}
+                        className="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer"
+                      >
+                        Aggiungi primo articolo
+                      </button>
+                    </div>
+                  </div>
+                ) : viewMode === 'table' ? (
+                  <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-500">
+                            <th className="py-2.5 pl-4 pr-2 w-8"></th>
+                            <th className="py-2.5 px-3">Articolo e Codici</th>
+                            <th className="py-2.5 px-3">Categoria / Ubicazione</th>
+                            <th className="py-2.5 px-3 text-right">Giacenza</th>
+                            <th className="py-2.5 px-3">Stato Scorta</th>
+                            <th className="py-2.5 pl-3 pr-4 text-right">Azioni Rapide</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {filteredCatalog.map((item) => {
+                            const status = getStockStatus(item);
+                            const isSelected = selectedItemId === item.id;
+                            const isConfirmDel = confirmDeleteId === item.id;
+                            const attCount = item.attachments?.length || 0;
+                            const ratio =
+                              item.minStock > 0
+                                ? Math.min(
+                                    100,
+                                    Math.round((item.quantity / (item.minStock * 2)) * 100)
+                                  )
+                                : item.quantity > 0
+                                ? 100
+                                : 0;
+
+                            return (
+                              <tr
+                                key={item.id}
+                                onClick={() => {
+                                  setSelectedItemId(item.id);
+                                  setDrawerQty(1);
+                                  setDrawerReason('');
+                                }}
+                                className={`cursor-pointer transition-colors ${
+                                  isSelected
+                                    ? 'bg-orange-50/70'
+                                    : 'hover:bg-slate-50'
+                                }`}
+                              >
+                                <td
+                                  className="py-2.5 pl-4 pr-1 align-middle"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleFavorite(item.id)}
+                                    className={`p-1 cursor-pointer transition-colors ${
+                                      item.isFavorite
+                                        ? 'text-amber-500'
+                                        : 'text-slate-300 hover:text-amber-400'
+                                    }`}
+                                    title={
+                                      item.isFavorite
+                                        ? 'Rimuovi dai Preferiti'
+                                        : 'Aggiungi ai Preferiti'
+                                    }
+                                  >
+                                    <Star
+                                      className={`w-3.5 h-3.5 ${
+                                        item.isFavorite ? 'fill-amber-400' : ''
+                                      }`}
+                                    />
+                                  </button>
+                                </td>
+
+                                <td className="py-2.5 px-3 align-middle">
+                                  <div className="flex items-center gap-2.5 min-w-0">
+                                    <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
+                                      {item.photoDataUrl ? (
+                                        <img
+                                          src={item.photoDataUrl}
+                                          alt={item.name}
+                                          className="w-full h-full object-cover"
+                                        />
+                                      ) : (
+                                        <Package className="w-4 h-4 text-slate-400" />
+                                      )}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <div className="font-semibold text-slate-900 truncate max-w-[260px]">
+                                        {item.name}
+                                      </div>
+                                      <div className="text-[11px] text-slate-500 font-mono truncate max-w-[280px]">
+                                        {item.sku}
+                                        {item.barcode ? ` · ${item.barcode}` : ''}
+                                        {attCount > 0 ? ` · ${attCount} allegati` : ''}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+
+                                <td className="py-2.5 px-3 align-middle">
+                                  <div className="text-slate-800 font-medium truncate max-w-[180px]">
+                                    {item.category}
+                                  </div>
+                                  <div className="text-[11px] text-slate-500 truncate max-w-[180px]">
+                                    {item.location || 'Magazzino'}
+                                    {item.supplier ? ` · ${item.supplier}` : ''}
+                                  </div>
+                                </td>
+
+                                <td className="py-2.5 px-3 align-middle text-right whitespace-nowrap">
+                                  <div className="font-mono text-sm font-bold tabular-nums text-slate-900">
+                                    {item.quantity}{' '}
+                                    <span className="text-[11px] font-normal text-slate-500">
+                                      {item.unit}
+                                    </span>
+                                  </div>
+                                  <div className="text-[11px] font-mono tabular-nums text-slate-400">
+                                    min. {item.minStock}
+                                  </div>
+                                </td>
+
+                                <td className="py-2.5 px-3 align-middle whitespace-nowrap">
+                                  <div className="w-28 space-y-1">
+                                    <div className={`text-[11px] font-semibold ${status.textClass}`}>
+                                      {status.label}
+                                    </div>
+                                    <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                      <div
+                                        style={{ width: `${ratio}%` }}
+                                        className={`h-full rounded-full ${status.barClass}`}
+                                      />
+                                    </div>
+                                  </div>
+                                </td>
+
+                                <td
+                                  className="py-2.5 pl-3 pr-4 align-middle text-right whitespace-nowrap"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <div className="inline-flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        applyStockMovement(
+                                          item,
+                                          'scarico',
+                                          1,
+                                          'Uscita rapida da catalogo'
+                                        )
+                                      }
+                                      className="px-2 py-1 rounded-md bg-white hover:bg-rose-600 text-rose-700 hover:text-white border border-slate-200 hover:border-rose-600 font-mono text-[11px] font-bold cursor-pointer transition-colors"
+                                      title="Scarica 1"
+                                    >
+                                      −1
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        applyStockMovement(
+                                          item,
+                                          'carico',
+                                          1,
+                                          'Entrata rapida da catalogo'
+                                        )
+                                      }
+                                      className="px-2 py-1 rounded-md bg-white hover:bg-emerald-600 text-emerald-700 hover:text-white border border-slate-200 hover:border-emerald-600 font-mono text-[11px] font-bold cursor-pointer transition-colors"
+                                      title="Carica +1"
+                                    >
+                                      +1
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => openEditItemModal(item)}
+                                      className="p-1.5 rounded-md hover:bg-slate-200/70 text-slate-500 hover:text-slate-900 cursor-pointer transition-colors"
+                                      title="Modifica articolo"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                    {isConfirmDel ? (
+                                      <div className="inline-flex items-center gap-1 ml-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteItem(item.id)}
+                                          className="px-2 py-1 rounded-md bg-rose-600 text-white text-[10px] font-semibold cursor-pointer"
+                                        >
+                                          Conferma
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setConfirmDeleteId(null)}
+                                          className="px-1.5 py-1 rounded-md bg-slate-100 text-slate-600 text-[10px] font-medium cursor-pointer"
+                                        >
+                                          No
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => setConfirmDeleteId(item.id)}
+                                        className="p-1.5 rounded-md hover:bg-rose-50 text-slate-400 hover:text-rose-600 cursor-pointer transition-colors"
+                                        title="Elimina articolo"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  /* Vista Schede pulita */
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
+                    {filteredCatalog.map((item) => {
+                      const status = getStockStatus(item);
+                      const isSelected = selectedItemId === item.id;
+                      const attCount = item.attachments?.length || 0;
+                      const ratio =
+                        item.minStock > 0
+                          ? Math.min(
+                              100,
+                              Math.round((item.quantity / (item.minStock * 2)) * 100)
+                            )
+                          : item.quantity > 0
+                          ? 100
+                          : 0;
+
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => {
+                            setSelectedItemId(item.id);
+                            setDrawerQty(1);
+                            setDrawerReason('');
+                          }}
+                          className={`bg-white rounded-xl border p-4 flex flex-col justify-between gap-3 cursor-pointer transition-colors ${
+                            isSelected
+                              ? 'border-slate-900'
+                              : item.quantity <= item.minStock
+                              ? 'border-amber-300 hover:border-amber-400'
+                              : 'border-slate-200 hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="w-12 h-12 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
+                              {item.photoDataUrl ? (
+                                <img
+                                  src={item.photoDataUrl}
+                                  alt={item.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <Package className="w-5 h-5 text-slate-400" />
+                              )}
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-1.5">
+                                <div className="text-sm font-semibold text-slate-900 truncate">
+                                  {item.name}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleToggleFavorite(item.id);
+                                  }}
+                                  className={`p-0.5 cursor-pointer shrink-0 ${
+                                    item.isFavorite
+                                      ? 'text-amber-500'
+                                      : 'text-slate-300 hover:text-amber-400'
+                                  }`}
+                                >
+                                  <Star
+                                    className={`w-4 h-4 ${
+                                      item.isFavorite ? 'fill-amber-400' : ''
+                                    }`}
+                                  />
+                                </button>
+                              </div>
+                              <div className="text-[11px] font-mono text-slate-500 truncate mt-0.5">
+                                {item.sku}
+                                {item.barcode ? ` · ${item.barcode}` : ''}
+                              </div>
+                              <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                                {item.category} · {item.location || 'Magazzino'}
+                                {attCount > 0 ? ` · ${attCount} file` : ''}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <div className="flex items-baseline justify-between">
+                              <span className="text-base font-bold font-mono tabular-nums text-slate-900">
+                                {item.quantity}{' '}
+                                <span className="text-xs font-normal text-slate-500">
+                                  {item.unit}
+                                </span>
+                              </span>
+                              <span className={`text-[11px] font-semibold ${status.textClass}`}>
+                                {status.label} · min. {item.minStock}
+                              </span>
+                            </div>
+                            <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                              <div
+                                style={{ width: `${ratio}%` }}
+                                className={`h-full rounded-full ${status.barClass}`}
+                              />
+                            </div>
+                          </div>
+
+                          <div
+                            className="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  applyStockMovement(
+                                    item,
+                                    'scarico',
+                                    1,
+                                    'Uscita rapida da catalogo'
+                                  )
+                                }
+                                className="px-2.5 py-1 rounded-md bg-slate-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-slate-200 hover:border-rose-600 font-mono text-xs font-bold cursor-pointer transition-colors"
+                              >
+                                −1
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  applyStockMovement(
+                                    item,
+                                    'carico',
+                                    1,
+                                    'Entrata rapida da catalogo'
+                                  )
+                                }
+                                className="px-2.5 py-1 rounded-md bg-slate-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-slate-200 hover:border-emerald-600 font-mono text-xs font-bold cursor-pointer transition-colors"
+                              >
+                                +1
+                              </button>
                             </div>
                             <button
                               type="button"
-                              onClick={() => handleToggleFavorite(item.id)}
-                              className="p-1 text-amber-500 hover:scale-110 transition-transform cursor-pointer shrink-0"
+                              onClick={() => openEditItemModal(item)}
+                              className="text-xs font-medium text-slate-600 hover:text-slate-900 cursor-pointer flex items-center gap-1"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                              <span>Modifica</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ===============================================================
+                TAB 2: LETTORE BARCODE USB / SKU (SENZA TELECAMERA)
+            =============================================================== */}
+            {activeTab === 'pos' && (
+              <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-5">
+                <div className="lg:col-span-7 space-y-4">
+                  {/* Terminale Barcode Pulito */}
+                  <form
+                    onSubmit={handleScanSubmit}
+                    className="bg-white border border-slate-200 rounded-xl p-5 space-y-4"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      {/* Segmented Mode Control */}
+                      <div className="inline-flex items-center p-1 bg-slate-100 rounded-lg">
+                        <button
+                          type="button"
+                          onClick={() => setScanMode('carico')}
+                          className={`px-3.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
+                            scanMode === 'carico'
+                              ? 'bg-emerald-600 text-white'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          <ArrowDownCircle className="w-3.5 h-3.5" />
+                          <span>Entrata (+)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setScanMode('scarico')}
+                          className={`px-3.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
+                            scanMode === 'scarico'
+                              ? 'bg-rose-600 text-white'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          <ArrowUpCircle className="w-3.5 h-3.5" />
+                          <span>Uscita (−)</span>
+                        </button>
+                      </div>
+
+                      <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={autoFocusScanner}
+                          onChange={(e) => setAutoFocusScanner(e.target.checked)}
+                          className="rounded accent-slate-900"
+                        />
+                        <span>Mantieni campo pronto per pistola USB</span>
+                      </label>
+                    </div>
+
+                    {/* Campo Codice a Barre / SKU */}
+                    <div className="relative">
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <ScanBarcode className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                          <input
+                            ref={scannerInputRef}
+                            type="text"
+                            value={scanCodeInput}
+                            onChange={(e) => setScanCodeInput(e.target.value)}
+                            placeholder="Scansiona codice a barre con lettore USB o digita SKU e premi Invio..."
+                            autoComplete="off"
+                            className="w-full pl-10 pr-4 py-3 text-sm font-mono font-semibold bg-slate-50 border border-slate-300 rounded-lg text-slate-900 placeholder:font-sans placeholder:font-normal placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-slate-900"
+                          />
+                        </div>
+                        <button
+                          type="submit"
+                          className={`px-5 py-3 rounded-lg text-white text-xs font-semibold cursor-pointer transition-colors whitespace-nowrap shrink-0 ${
+                            scanMode === 'carico'
+                              ? 'bg-emerald-600 hover:bg-emerald-700'
+                              : 'bg-rose-600 hover:bg-rose-700'
+                          }`}
+                        >
+                          {scanMode === 'carico' ? 'Carica +' : 'Scarica −'}
+                        </button>
+                      </div>
+
+                      {/* Autocompletamento rapido durante digitazione manuale */}
+                      {scannerSuggestions.length > 0 && (
+                        <div className="mt-1.5 bg-white border border-slate-200 rounded-lg divide-y divide-slate-100 shadow-md overflow-hidden">
+                          {scannerSuggestions.map((sug) => (
+                            <button
+                              key={sug.id}
+                              type="button"
+                              onClick={() => {
+                                applyStockMovement(
+                                  sug,
+                                  scanMode,
+                                  scanQty,
+                                  scanMode === 'carico'
+                                    ? 'Entrata rapida da terminale'
+                                    : 'Uscita rapida da terminale'
+                                );
+                                setScanCodeInput('');
+                              }}
+                              className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center justify-between gap-3 cursor-pointer"
+                            >
+                              <div className="min-w-0">
+                                <div className="text-xs font-semibold text-slate-900 truncate">
+                                  {sug.name}
+                                </div>
+                                <div className="text-[11px] font-mono text-slate-500">
+                                  {sug.sku}
+                                  {sug.barcode ? ` · ${sug.barcode}` : ''}
+                                </div>
+                              </div>
+                              <div className="text-xs font-mono tabular-nums text-slate-700 shrink-0">
+                                {sug.quantity} {sug.unit}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Quantità e Commessa */}
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-1">
+                      <div className="sm:col-span-7">
+                        <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                          Quantità per operazione
+                        </label>
+                        <div className="flex items-center gap-1.5">
+                          {[1, 2, 5, 10].map((preset) => (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => setScanQty(preset)}
+                              className={`px-2.5 py-1.5 rounded-md font-mono text-xs font-semibold border cursor-pointer transition-colors ${
+                                scanQty === preset
+                                  ? 'bg-slate-900 text-white border-slate-900'
+                                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                              }`}
+                            >
+                              ×{preset}
+                            </button>
+                          ))}
+                          <input
+                            type="number"
+                            min={1}
+                            step={1}
+                            value={scanQty}
+                            onChange={(e) =>
+                              setScanQty(Math.max(1, Number(e.target.value) || 1))
+                            }
+                            className="w-20 px-2.5 py-1.5 text-xs font-mono font-semibold bg-white border border-slate-300 rounded-md text-center focus:outline-none focus:border-slate-900"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="sm:col-span-5">
+                        <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                          Commessa associata
+                        </label>
+                        <select
+                          value={scanCommessaCode}
+                          onChange={(e) => setScanCommessaCode(e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-md focus:outline-none focus:border-slate-900"
+                        >
+                          <option value="">Magazzino generale</option>
+                          {loads.map((ld) => (
+                            <option key={ld.id} value={ld.code}>
+                              {ld.code} — {ld.title}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-slate-500">
+                      Se il codice esiste già la giacenza si aggiorna subito; se è nuovo si apre la scheda per registrarlo una sola volta.
+                    </p>
+                  </form>
+
+                  {/* Conferma ultima operazione */}
+                  {lastScannedBanner && (
+                    <div
+                      className={`rounded-xl border px-4 py-3.5 flex items-center justify-between gap-4 ${
+                        lastScannedBanner.kind === 'in'
+                          ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
+                          : lastScannedBanner.kind === 'out'
+                          ? 'bg-rose-50 border-rose-200 text-rose-950'
+                          : 'bg-amber-50 border-amber-200 text-amber-950'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <CheckCircle2 className="w-5 h-5 shrink-0" />
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold truncate">
+                            {lastScannedBanner.title}
+                          </div>
+                          <div className="text-xs opacity-80 truncate">
+                            {lastScannedBanner.detail}
+                          </div>
+                          {lastScannedBanner.lowStock && (
+                            <div className="text-xs font-semibold text-rose-700 mt-0.5">
+                              Attenzione: articolo sotto la scorta minima
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {lastScannedBanner.resultingQty !== undefined && (
+                        <div className="text-right shrink-0">
+                          <div className="text-[11px] opacity-70">Giacenza</div>
+                          <div className="text-lg font-bold font-mono tabular-nums">
+                            {lastScannedBanner.resultingQty} {lastScannedBanner.unit}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Preferiti rapidi */}
+                  {favoriteItems.length > 0 && (
+                    <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xs font-semibold text-slate-700">
+                          Accesso rapido Preferiti ({scanMode === 'carico' ? `+${scanQty}` : `−${scanQty}`})
+                        </h3>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('favorites')}
+                          className="text-xs font-medium text-slate-600 hover:text-slate-900 cursor-pointer"
+                        >
+                          Gestisci preferiti
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {favoriteItems.slice(0, 6).map((fav) => (
+                          <button
+                            key={fav.id}
+                            type="button"
+                            onClick={() => applyStockMovement(fav, scanMode, scanQty)}
+                            className="p-2.5 rounded-lg border border-slate-200 hover:border-slate-400 hover:bg-slate-50 text-left cursor-pointer transition-colors"
+                          >
+                            <div className="text-xs font-semibold text-slate-900 truncate">
+                              {fav.name}
+                            </div>
+                            <div className="text-[11px] font-mono text-slate-500 tabular-nums mt-0.5">
+                              {fav.quantity} {fav.unit} · {fav.sku}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Colonna destra: Registro Sessione */}
+                <div className="lg:col-span-5 bg-white border border-slate-200 rounded-xl flex flex-col overflow-hidden max-h-[600px]">
+                  <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between shrink-0">
+                    <div>
+                      <div className="text-xs font-semibold text-slate-900">
+                        Registro Sessione
+                      </div>
+                      <div className="text-[11px] text-slate-500 font-mono tabular-nums">
+                        {sessionLog.filter((s) => !s.undone).length} operazioni attive
+                      </div>
+                    </div>
+                    {sessionLog.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSessionLog([])}
+                        className="text-xs text-slate-500 hover:text-slate-900 cursor-pointer"
+                      >
+                        Pulisci elenco
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+                    {sessionLog.length === 0 ? (
+                      <div className="py-16 px-6 text-center space-y-2">
+                        <ScanBarcode className="w-8 h-8 text-slate-300 mx-auto" />
+                        <div className="text-xs font-semibold text-slate-700">
+                          In attesa di scansioni
+                        </div>
+                        <p className="text-xs text-slate-500">
+                          Ogni codice battuto con il lettore USB o digitato apparirà qui con possibilità di annullamento immediato.
+                        </p>
+                      </div>
+                    ) : (
+                      sessionLog.map((entry) => (
+                        <div
+                          key={entry.id}
+                          className={`px-4 py-3 flex items-center justify-between gap-3 ${
+                            entry.undone ? 'opacity-45 line-through' : ''
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-semibold text-slate-900 truncate">
+                              {entry.name}
+                            </div>
+                            <div className="text-[11px] font-mono text-slate-500 tabular-nums mt-0.5">
+                              {entry.mode === 'carico' ? 'Entrata' : 'Uscita'} · {entry.sku} ·{' '}
+                              {entry.previousQty} → {entry.resultingQty} {entry.unit}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span
+                              className={`font-mono text-xs font-bold tabular-nums ${
+                                entry.mode === 'carico'
+                                  ? 'text-emerald-700'
+                                  : 'text-rose-700'
+                              }`}
+                            >
+                              {entry.mode === 'carico' ? '+' : '−'}
+                              {entry.quantity}
+                            </span>
+                            {!entry.undone && (
+                              <button
+                                type="button"
+                                onClick={() => handleUndoSessionEntry(entry)}
+                                className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-900 cursor-pointer"
+                                title="Annulla operazione"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ===============================================================
+                TAB 3: PREFERITI
+            =============================================================== */}
+            {activeTab === 'favorites' && (
+              <div className="max-w-6xl mx-auto space-y-5">
+                {favoriteItems.length === 0 ? (
+                  <div className="bg-white border border-slate-200 rounded-xl p-10 text-center space-y-2">
+                    <Star className="w-8 h-8 text-amber-300 mx-auto" />
+                    <div className="text-sm font-semibold text-slate-800">
+                      Nessun articolo nei Preferiti
+                    </div>
+                    <p className="text-xs text-slate-500 max-w-md mx-auto">
+                      Clicca la stella accanto a un articolo nel Catalogo per tenerlo in evidenza qui e nel Lettore Barcode.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                    {favoriteItems.map((item) => {
+                      const status = getStockStatus(item);
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => setSelectedItemId(item.id)}
+                          className="bg-white border border-slate-200 hover:border-slate-300 rounded-xl p-4 flex flex-col justify-between gap-3 cursor-pointer transition-colors"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-slate-900 truncate">
+                                {item.name}
+                              </div>
+                              <div className="text-[11px] font-mono text-slate-500 truncate mt-0.5">
+                                {item.sku} · {item.location || 'Magazzino'}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleFavorite(item.id);
+                              }}
+                              className="p-1 text-amber-500 cursor-pointer shrink-0"
                               title="Rimuovi dai Preferiti"
                             >
                               <Star className="w-4 h-4 fill-amber-400" />
                             </button>
                           </div>
-                          <div className="text-[11px] font-mono text-slate-500 truncate">
-                            {item.sku}
-                            {item.barcode ? ` · ${item.barcode}` : ''}
-                          </div>
-                          <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                            <MapPin className="w-3 h-3 text-slate-400" />
-                            <span className="truncate">{item.location || 'Magazzino'}</span>
-                          </div>
-                        </div>
-                      </div>
 
-                      <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                        <div>
-                          <div className="text-[10px] font-semibold uppercase text-slate-400">
-                            Giacenza (min. {item.minStock})
-                          </div>
                           <div
-                            className={`text-xl font-black font-mono tabular-nums ${
-                              isLow ? 'text-rose-600' : 'text-slate-900'
-                            }`}
+                            className="flex items-center justify-between pt-2.5 border-t border-slate-100"
+                            onClick={(e) => e.stopPropagation()}
                           >
-                            {item.quantity}{' '}
-                            <span className="text-xs font-semibold text-slate-500">
-                              {item.unit}
-                            </span>
+                            <div>
+                              <div className="text-base font-bold font-mono tabular-nums text-slate-900">
+                                {item.quantity}{' '}
+                                <span className="text-xs font-normal text-slate-500">
+                                  {item.unit}
+                                </span>
+                              </div>
+                              <div className={`text-[11px] font-medium ${status.textClass}`}>
+                                {status.label} · min. {item.minStock}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  applyStockMovement(
+                                    item,
+                                    'scarico',
+                                    1,
+                                    'Uscita rapida da Preferiti'
+                                  )
+                                }
+                                className="px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-slate-200 hover:border-rose-600 font-mono text-xs font-bold cursor-pointer transition-colors"
+                              >
+                                −1
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  applyStockMovement(
+                                    item,
+                                    'carico',
+                                    1,
+                                    'Entrata rapida da Preferiti'
+                                  )
+                                }
+                                className="px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-slate-200 hover:border-emerald-600 font-mono text-xs font-bold cursor-pointer transition-colors"
+                              >
+                                +1
+                              </button>
+                            </div>
                           </div>
                         </div>
+                      );
+                    })}
+                  </div>
+                )}
 
-                        <div className="flex items-center gap-1.5">
+                {mostUsedSuggestions.length > 0 && (
+                  <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+                    <div className="text-xs font-semibold text-slate-700">
+                      Articoli più movimentati — aggiungi ai Preferiti
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                      {mostUsedSuggestions.map((it) => (
+                        <div
+                          key={it.id}
+                          className="px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between gap-2"
+                        >
+                          <div className="min-w-0">
+                            <div className="text-xs font-semibold text-slate-900 truncate">
+                              {it.name}
+                            </div>
+                            <div className="text-[11px] font-mono text-slate-500 tabular-nums">
+                              {it.sku} · {it.usageCount || 0} utilizzi
+                            </div>
+                          </div>
                           <button
                             type="button"
-                            onClick={() =>
-                              applyStockMovement(item, 'scarico', 1, 'Uscita rapida da Preferiti')
-                            }
-                            className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-200 text-xs font-extrabold flex items-center gap-1 cursor-pointer transition-colors"
+                            onClick={() => handleToggleFavorite(it.id)}
+                            className="px-2.5 py-1 rounded-md bg-white hover:bg-amber-50 border border-slate-300 text-xs font-medium text-slate-700 cursor-pointer shrink-0"
                           >
-                            <Minus className="w-3.5 h-3.5" />
-                            <span>1</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              applyStockMovement(item, 'carico', 1, 'Entrata rapida da Preferiti')
-                            }
-                            className="px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-600 text-emerald-800 hover:text-white border border-emerald-200 text-xs font-extrabold flex items-center gap-1 cursor-pointer transition-colors"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            <span>1</span>
+                            Aggiungi
                           </button>
                         </div>
-                      </div>
+                      ))}
                     </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Suggestions from Most Used */}
-            {mostUsedSuggestions.length > 0 && (
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
-                <div className="text-xs font-extrabold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-orange-500" />
-                  Più utilizzati di recente — aggiungi ai Preferiti
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
-                  {mostUsedSuggestions.map((it) => (
-                    <div
-                      key={it.id}
-                      className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2"
-                    >
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-slate-900 truncate">
-                          {it.name}
-                        </div>
-                        <div className="text-[10px] font-mono text-slate-500 tabular-nums">
-                          {it.sku} · {it.usageCount || 0} utilizzi
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleToggleFavorite(it.id)}
-                        className="px-2.5 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 text-[11px] font-bold flex items-center gap-1 cursor-pointer shrink-0"
-                      >
-                        <Star className="w-3 h-3" />
-                        <span>Aggiungi</span>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ===================================================================
-            TAB 3 & TAB 4: CATALOGO MAGAZZINO & SOTTO SCORTA
-        =================================================================== */}
-        {(activeTab === 'catalog' || activeTab === 'low_stock') && (
-          <div className="max-w-6xl mx-auto space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-2.5 flex-1">
-                <div className="relative flex-1 min-w-[220px] max-w-md">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Cerca per nome, SKU, codice a barre, scaffale..."
-                    className="w-full pl-8 pr-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-orange-500"
-                  />
-                </div>
-                {activeTab === 'catalog' && (
-                  <select
-                    value={categoryFilter}
-                    onChange={(e) => setCategoryFilter(e.target.value)}
-                    className="px-3 py-2 text-xs font-semibold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-orange-500"
-                  >
-                    <option value="all">Tutte le categorie</option>
-                    {categories.map((cat) => (
-                      <option key={cat} value={cat}>
-                        {cat}
-                      </option>
-                    ))}
-                  </select>
+                  </div>
                 )}
               </div>
+            )}
 
-              <button
-                type="button"
-                onClick={() => openNewItemModal('', false)}
-                className="px-3.5 py-2 rounded-xl bg-orange-500 hover:bg-orange-400 text-slate-950 text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Aggiungi Articolo</span>
-              </button>
-            </div>
-
-            {(() => {
-              const list =
-                activeTab === 'low_stock'
-                  ? filteredCatalog.filter((it) => it.quantity <= it.minStock)
-                  : filteredCatalog;
-
-              if (list.length === 0) {
-                return (
-                  <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center space-y-2">
-                    <Package className="w-9 h-9 text-slate-300 mx-auto" />
-                    <div className="text-sm font-bold text-slate-700">
-                      {activeTab === 'low_stock'
-                        ? 'Nessun articolo sotto scorta minima'
-                        : 'Nessun articolo trovato in magazzino'}
+            {/* ===============================================================
+                TAB 5: STORICO MOVIMENTI
+            =============================================================== */}
+            {activeTab === 'history' && (
+              <div className="max-w-7xl mx-auto space-y-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="inline-flex items-center p-0.5 bg-slate-200/80 rounded-lg text-xs font-medium">
+                      {(['all', 'carico', 'scarico'] as const).map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setHistoryFilter(t)}
+                          className={`px-3 py-1.5 rounded-md cursor-pointer transition-colors ${
+                            historyFilter === t
+                              ? 'bg-white text-slate-900 shadow-2xs font-semibold'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          {t === 'all'
+                            ? 'Tutti'
+                            : t === 'carico'
+                            ? 'Solo Entrate'
+                            : 'Solo Uscite'}
+                        </button>
+                      ))}
                     </div>
-                    <p className="text-xs text-slate-500">
-                      {activeTab === 'low_stock'
-                        ? 'Tutte le giacenze sono sopra la soglia minima configurata.'
-                        : 'Usa "Nuovo Articolo" oppure spara un codice a barre dalla Cassa Lettore per registrarlo subito.'}
-                    </p>
+
+                    <div className="relative min-w-[220px]">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={historySearch}
+                        onChange={(e) => setHistorySearch(e.target.value)}
+                        placeholder="Filtra per articolo, SKU, commessa..."
+                        className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-slate-900"
+                      />
+                    </div>
                   </div>
-                );
-              }
 
-              return (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {list.map((item) => {
-                    const isLow = item.quantity <= item.minStock;
-                    const ratio =
-                      item.minStock > 0
-                        ? Math.min(100, Math.round((item.quantity / (item.minStock * 2)) * 100))
-                        : item.quantity > 0
-                        ? 100
-                        : 0;
-                    const attCount = item.attachments?.length || 0;
-                    const isConfirmDel = confirmDeleteId === item.id;
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-mono text-slate-500 tabular-nums">
+                      {filteredHistory.length} movimenti
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleExportCsv}
+                      className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-xs font-semibold text-slate-700 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Esporta CSV</span>
+                    </button>
+                  </div>
+                </div>
 
-                    return (
-                      <div
-                        key={item.id}
-                        className={`bg-white rounded-2xl border p-4 flex flex-col justify-between gap-3 shadow-2xs ${
-                          isLow ? 'border-rose-300' : 'border-slate-200'
-                        }`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <button
-                            type="button"
-                            onClick={() => setPreviewItem(item)}
-                            className="w-16 h-16 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0 cursor-pointer group"
-                            title="Apri scheda e allegati"
-                          >
-                            {item.photoDataUrl ? (
-                              <img
-                                src={item.photoDataUrl}
-                                alt={item.name}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                              />
-                            ) : (
-                              <Package className="w-6 h-6 text-slate-400" />
-                            )}
-                          </button>
-
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => setPreviewItem(item)}
-                                className="text-sm font-bold text-slate-900 hover:text-orange-600 text-left truncate cursor-pointer"
-                              >
-                                {item.name}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleToggleFavorite(item.id)}
-                                className={`p-1 cursor-pointer shrink-0 transition-transform hover:scale-110 ${
-                                  item.isFavorite
-                                    ? 'text-amber-500'
-                                    : 'text-slate-300 hover:text-amber-400'
+                {filteredHistory.length === 0 ? (
+                  <div className="bg-white border border-slate-200 rounded-xl p-10 text-center text-xs text-slate-500">
+                    Nessun movimento registrato con questi filtri.
+                  </div>
+                ) : (
+                  <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto">
+                    <table className="w-full text-xs text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-500">
+                          <th className="py-2.5 px-4">Data / Ora</th>
+                          <th className="py-2.5 px-3">Tipo</th>
+                          <th className="py-2.5 px-3">Articolo / SKU</th>
+                          <th className="py-2.5 px-3 text-right">Quantità</th>
+                          <th className="py-2.5 px-3">Commessa</th>
+                          <th className="py-2.5 px-4">Causale e Operatore</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredHistory.slice(0, 200).map((m) => (
+                          <tr key={m.id} className="hover:bg-slate-50">
+                            <td className="py-2.5 px-4 font-mono text-[11px] text-slate-600 whitespace-nowrap tabular-nums">
+                              {formatDateTime(m.timestamp)}
+                            </td>
+                            <td className="py-2.5 px-3 whitespace-nowrap">
+                              <span
+                                className={`font-semibold ${
+                                  m.type === 'carico' ? 'text-emerald-700' : 'text-rose-700'
                                 }`}
-                                title={
-                                  item.isFavorite
-                                    ? 'Rimuovi dai Preferiti'
-                                    : 'Aggiungi ai Preferiti'
+                              >
+                                {m.type === 'carico' ? 'Entrata' : 'Uscita'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <div className="font-semibold text-slate-900">{m.itemName}</div>
+                              <div className="font-mono text-[11px] text-slate-500">{m.sku}</div>
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-mono font-bold whitespace-nowrap tabular-nums">
+                              <span
+                                className={
+                                  m.type === 'carico' ? 'text-emerald-700' : 'text-rose-700'
                                 }
                               >
-                                <Star
-                                  className={`w-4 h-4 ${
-                                    item.isFavorite ? 'fill-amber-400' : ''
-                                  }`}
-                                />
-                              </button>
-                            </div>
-
-                            <div className="text-[11px] font-mono font-bold text-indigo-700 truncate">
-                              SKU: {item.sku}
-                            </div>
-                            {item.barcode && (
-                              <div className="text-[11px] font-mono text-slate-500 truncate flex items-center gap-1">
-                                <ScanBarcode className="w-3 h-3 text-slate-400" />
-                                {item.barcode}
-                              </div>
-                            )}
-                            <div className="text-[11px] text-slate-500 mt-0.5 flex flex-wrap items-center gap-x-2">
-                              <span>{item.category}</span>
-                              {item.location && <span>· {item.location}</span>}
-                              {attCount > 0 && (
-                                <span className="text-sky-700 font-semibold inline-flex items-center gap-0.5">
-                                  <Paperclip className="w-3 h-3" />
-                                  {attCount} file
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Stock Level Bar */}
-                        <div className="space-y-1.5">
-                          <div className="flex items-baseline justify-between">
-                            <span
-                              className={`text-lg font-black font-mono tabular-nums ${
-                                isLow ? 'text-rose-600' : 'text-slate-900'
-                              }`}
-                            >
-                              {item.quantity}{' '}
-                              <span className="text-xs font-semibold text-slate-500">
-                                {item.unit}
+                                {m.type === 'carico' ? '+' : '−'}
+                                {m.quantity} {m.unit}
                               </span>
-                            </span>
-                            <span
-                              className={`text-[11px] font-bold ${
-                                isLow ? 'text-rose-600' : 'text-slate-500'
-                              }`}
-                            >
-                              {isLow
-                                ? `Sotto scorta (min. ${item.minStock})`
-                                : `Scorta min. ${item.minStock}`}
-                            </span>
-                          </div>
-                          <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                            <div
-                              style={{ width: `${ratio}%` }}
-                              className={`h-full rounded-full transition-all ${
-                                isLow ? 'bg-rose-500' : 'bg-emerald-500'
-                              }`}
-                            />
-                          </div>
-                        </div>
-
-                        {/* Actions */}
-                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                applyStockMovement(
-                                  item,
-                                  'scarico',
-                                  1,
-                                  'Uscita rapida da Catalogo'
-                                )
-                              }
-                              className="px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-200 text-xs font-bold cursor-pointer transition-colors"
-                              title="Togli 1 dal magazzino"
-                            >
-                              −1
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                applyStockMovement(
-                                  item,
-                                  'carico',
-                                  1,
-                                  'Entrata rapida da Catalogo'
-                                )
-                              }
-                              className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-600 text-emerald-800 hover:text-white border border-emerald-200 text-xs font-bold cursor-pointer transition-colors"
-                              title="Carica +1 in magazzino"
-                            >
-                              +1
-                            </button>
-                          </div>
-
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => openEditItemModal(item)}
-                              className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 cursor-pointer"
-                              title="Modifica articolo, foto e file"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            {isConfirmDel ? (
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteItem(item.id)}
-                                  className="px-2 py-1 rounded-md bg-rose-600 text-white text-[10px] font-bold cursor-pointer"
-                                >
-                                  Elimina
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setConfirmDeleteId(null)}
-                                  className="px-2 py-1 rounded-md bg-slate-100 text-slate-600 text-[10px] font-semibold cursor-pointer"
-                                >
-                                  No
-                                </button>
+                              <div className="text-[11px] font-normal text-slate-400">
+                                Giac.: {m.resultingQty}
                               </div>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => setConfirmDeleteId(item.id)}
-                                className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 cursor-pointer"
-                                title="Elimina articolo"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-700">
+                              {m.commessaCode || '—'}
+                            </td>
+                            <td className="py-2.5 px-4 text-slate-600">
+                              <div>{m.reason}</div>
+                              <div className="text-[11px] text-slate-400">{m.operatorName}</div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+          </main>
+
+          {/* =================================================================
+              PANNELLO LATERALE DETTAGLIO ARTICOLO (INSPECTOR)
+          ================================================================= */}
+          {selectedItem && (
+            <aside className="w-full max-w-sm border-l border-slate-200 bg-white flex flex-col shrink-0 overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-2 shrink-0">
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-slate-900 truncate">
+                    {selectedItem.name}
+                  </div>
+                  <div className="text-[11px] font-mono text-slate-500 truncate">
+                    {selectedItem.sku}
+                    {selectedItem.barcode ? ` · ${selectedItem.barcode}` : ''}
+                  </div>
                 </div>
-              );
-            })()}
-          </div>
-        )}
-
-        {/* ===================================================================
-            TAB 5: STORICO MOVIMENTI ENTRATA / USCITA
-        =================================================================== */}
-        {activeTab === 'history' && (
-          <div className="max-w-6xl mx-auto space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center p-1 bg-white border border-slate-200 rounded-xl text-xs font-semibold">
-                {(['all', 'carico', 'scarico'] as const).map((t) => (
+                <div className="flex items-center gap-1 shrink-0">
                   <button
-                    key={t}
                     type="button"
-                    onClick={() => setHistoryFilter(t)}
-                    className={`px-3 py-1.5 rounded-lg cursor-pointer transition-colors ${
-                      historyFilter === t
-                        ? t === 'carico'
-                          ? 'bg-emerald-600 text-white'
-                          : t === 'scarico'
-                          ? 'bg-rose-600 text-white'
-                          : 'bg-slate-900 text-white'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
+                    onClick={() => openEditItemModal(selectedItem)}
+                    className="p-1.5 rounded-md hover:bg-slate-100 text-slate-600 hover:text-slate-900 cursor-pointer"
+                    title="Modifica scheda"
                   >
-                    {t === 'all'
-                      ? 'Tutti'
-                      : t === 'carico'
-                      ? 'Solo Entrate'
-                      : 'Solo Uscite'}
+                    <Pencil className="w-3.5 h-3.5" />
                   </button>
-                ))}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedItemId(null)}
+                    className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 hover:text-slate-900 cursor-pointer"
+                    title="Chiudi pannello"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-              <span className="text-xs font-mono text-slate-500 tabular-nums">
-                {filteredHistory.length} movimenti
-              </span>
-            </div>
 
-            {filteredHistory.length === 0 ? (
-              <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center text-xs text-slate-500">
-                Nessun movimento registrato finora.
-              </div>
-            ) : (
-              <div className="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-500">
-                    <tr>
-                      <th className="py-2.5 px-3">Data / Ora</th>
-                      <th className="py-2.5 px-3">Tipo</th>
-                      <th className="py-2.5 px-3">Articolo / SKU</th>
-                      <th className="py-2.5 px-3 text-right">Quantità</th>
-                      <th className="py-2.5 px-3">Commessa</th>
-                      <th className="py-2.5 px-3">Causale</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredHistory.slice(0, 200).map((m) => (
-                      <tr key={m.id} className="hover:bg-slate-50/70">
-                        <td className="py-2.5 px-3 font-mono text-[11px] text-slate-600 whitespace-nowrap tabular-nums">
-                          {formatDateTime(m.timestamp)}
-                        </td>
-                        <td className="py-2.5 px-3 whitespace-nowrap">
-                          <span
-                            className={`font-bold ${
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+                {selectedItem.photoDataUrl && (
+                  <img
+                    src={selectedItem.photoDataUrl}
+                    alt={selectedItem.name}
+                    className="w-full max-h-44 object-contain rounded-lg bg-slate-50 border border-slate-200"
+                  />
+                )}
+
+                {/* Giacenza & Ubicazione */}
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <div className="text-[11px] text-slate-500">Giacenza attuale</div>
+                    <div className="text-lg font-bold font-mono tabular-nums text-slate-900 mt-0.5">
+                      {selectedItem.quantity} {selectedItem.unit}
+                    </div>
+                    <div
+                      className={`text-[11px] font-medium mt-0.5 ${
+                        getStockStatus(selectedItem).textClass
+                      }`}
+                    >
+                      {getStockStatus(selectedItem).label} (min. {selectedItem.minStock})
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <div className="text-[11px] text-slate-500">Posizione</div>
+                    <div className="text-xs font-semibold text-slate-900 mt-1 flex items-center gap-1">
+                      <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span className="truncate">{selectedItem.location || 'Magazzino'}</span>
+                    </div>
+                    <div className="text-[11px] text-slate-500 truncate mt-1">
+                      {selectedItem.category}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Movimento rapido quantità personalizzata */}
+                <div className="p-3.5 rounded-lg border border-slate-200 space-y-2.5">
+                  <div className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Movimenta quantità</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      step="any"
+                      value={drawerQty}
+                      onChange={(e) => setDrawerQty(Math.max(0.01, Number(e.target.value) || 1))}
+                      className="w-20 px-2.5 py-1.5 font-mono font-semibold text-center bg-slate-50 border border-slate-300 rounded-md focus:bg-white focus:outline-none focus:border-slate-900"
+                    />
+                    <input
+                      type="text"
+                      value={drawerReason}
+                      onChange={(e) => setDrawerReason(e.target.value)}
+                      placeholder="Causale (opzionale)"
+                      className="flex-1 min-w-0 px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-md focus:bg-white focus:outline-none focus:border-slate-900"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        applyStockMovement(
+                          selectedItem,
+                          'scarico',
+                          drawerQty,
+                          drawerReason || 'Scarico da scheda articolo'
+                        );
+                        setDrawerReason('');
+                      }}
+                      className="px-3 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <Minus className="w-3.5 h-3.5" />
+                      <span>Scarica {drawerQty}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        applyStockMovement(
+                          selectedItem,
+                          'carico',
+                          drawerQty,
+                          drawerReason || 'Carico da scheda articolo'
+                        );
+                        setDrawerReason('');
+                      }}
+                      className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Carica {drawerQty}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Dettagli fornitore & note */}
+                {(selectedItem.supplier || selectedItem.notes) && (
+                  <div className="space-y-1.5 text-slate-600 border-t border-slate-100 pt-3">
+                    {selectedItem.supplier && (
+                      <div>
+                        <span className="text-slate-400">Fornitore:</span>{' '}
+                        <span className="font-medium text-slate-800">{selectedItem.supplier}</span>
+                      </div>
+                    )}
+                    {selectedItem.notes && (
+                      <div>
+                        <span className="text-slate-400">Note:</span>{' '}
+                        <span className="text-slate-700">{selectedItem.notes}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Allegati */}
+                {selectedItem.attachments && selectedItem.attachments.length > 0 && (
+                  <div className="space-y-1.5 border-t border-slate-100 pt-3">
+                    <div className="font-semibold text-slate-800">
+                      Allegati ({selectedItem.attachments.length})
+                    </div>
+                    {selectedItem.attachments.map((att) => (
+                      <div
+                        key={att.id}
+                        className="px-2.5 py-2 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between gap-2"
+                      >
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <FileText className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                          <span className="truncate font-medium text-slate-800">
+                            {att.name}
+                          </span>
+                          <span className="font-mono text-[10px] text-slate-400 shrink-0">
+                            {formatBytes(att.sizeBytes)}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadAttachment(att)}
+                          className="p-1 text-slate-600 hover:text-slate-900 cursor-pointer shrink-0"
+                          title="Scarica allegato"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Ultimi movimenti di questo articolo */}
+                <div className="space-y-2 border-t border-slate-100 pt-3">
+                  <div className="font-semibold text-slate-800">
+                    Ultimi movimenti articolo
+                  </div>
+                  {selectedItemMovements.length === 0 ? (
+                    <div className="text-slate-400">Nessun movimento registrato.</div>
+                  ) : (
+                    <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg">
+                      {selectedItemMovements.map((m) => (
+                        <div
+                          key={m.id}
+                          className="px-3 py-2 flex items-center justify-between gap-2"
+                        >
+                          <div className="min-w-0">
+                            <div className="text-[11px] font-medium text-slate-800 truncate">
+                              {m.reason}
+                            </div>
+                            <div className="text-[10px] font-mono text-slate-400 tabular-nums">
+                              {formatDateTime(m.timestamp)}
+                              {m.commessaCode ? ` · ${m.commessaCode}` : ''}
+                            </div>
+                          </div>
+                          <div
+                            className={`font-mono text-xs font-bold tabular-nums shrink-0 ${
                               m.type === 'carico' ? 'text-emerald-700' : 'text-rose-700'
                             }`}
                           >
-                            {m.type === 'carico' ? 'Entrata' : 'Uscita'}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <div className="font-semibold text-slate-900">
-                            {m.itemName}
-                          </div>
-                          <div className="font-mono text-[10px] text-slate-500">
-                            {m.sku}
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-bold whitespace-nowrap tabular-nums">
-                          <span
-                            className={
-                              m.type === 'carico' ? 'text-emerald-700' : 'text-rose-700'
-                            }
-                          >
                             {m.type === 'carico' ? '+' : '−'}
-                            {m.quantity} {m.unit}
-                          </span>
-                          <div className="text-[10px] font-normal text-slate-400">
-                            Giac.: {m.resultingQty}
+                            {m.quantity}
                           </div>
-                        </td>
-                        <td className="py-2.5 px-3 font-mono text-indigo-700 font-semibold">
-                          {m.commessaCode || '—'}
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-600">{m.reason}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
-          </div>
-        )}
+            </aside>
+          )}
+        </div>
       </div>
 
       {/* =====================================================================
-          MODAL: REGISTRA NUOVO ARTICOLO (ANCHE DA BARCODE NON RICONOSCIUTO) / MODIFICA
+          MODAL: NUOVO ARTICOLO / MODIFICA ARTICOLO (SENZA TELECAMERA)
       ===================================================================== */}
       {editorOpen && (
         <div className="fixed inset-0 z-[85] bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
-            <div className="px-5 py-3.5 bg-[#0d101c] text-white flex items-center justify-between gap-3 shrink-0">
+          <div className="bg-white border border-slate-200 rounded-xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
+            <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between gap-3 shrink-0">
               <div>
-                <h3 className="text-sm font-extrabold">
+                <h3 className="text-sm font-bold">
                   {editingItemId
-                    ? 'Modifica Articolo di Magazzino'
+                    ? 'Modifica Articolo'
                     : isFromUnknownScan
-                    ? 'Codice non riconosciuto — Registra Nuovo Articolo'
+                    ? 'Nuovo codice rilevato — Registra Articolo'
                     : 'Nuovo Articolo di Magazzino'}
                 </h3>
                 {isFromUnknownScan && (
                   <p className="text-[11px] text-amber-300 mt-0.5">
-                    Una volta salvato, questo codice a barre verrà memorizzato e riconosciuto automaticamente alle prossime scansioni.
+                    Una volta salvato, questo codice verrà riconosciuto automaticamente alle prossime scansioni.
                   </p>
                 )}
               </div>
@@ -2285,14 +2592,14 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
               className="flex-1 overflow-y-auto p-5 space-y-4 text-xs"
             >
               {formError && (
-                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 font-semibold">
+                <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 font-medium">
                   {formError}
                 </div>
               )}
 
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
                 <div className="sm:col-span-6">
-                  <label className="block font-bold text-slate-700 mb-1">
+                  <label className="block font-semibold text-slate-700 mb-1">
                     Nome Articolo *
                   </label>
                   <input
@@ -2302,11 +2609,11 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                     value={formName}
                     onChange={(e) => setFormName(e.target.value)}
                     placeholder="Es. Bullone Inox M10×40"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-orange-500"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-slate-900"
                   />
                 </div>
                 <div className="sm:col-span-3">
-                  <label className="block font-bold text-slate-700 mb-1">
+                  <label className="block font-semibold text-slate-700 mb-1">
                     SKU *
                   </label>
                   <input
@@ -2315,11 +2622,11 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                     value={formSku}
                     onChange={(e) => setFormSku(e.target.value)}
                     placeholder="SKU-0001"
-                    className="w-full px-3 py-2 font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-orange-500"
+                    className="w-full px-3 py-2 font-mono font-semibold bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-slate-900"
                   />
                 </div>
                 <div className="sm:col-span-3">
-                  <label className="block font-bold text-slate-700 mb-1">
+                  <label className="block font-semibold text-slate-700 mb-1">
                     Codice a Barre
                   </label>
                   <input
@@ -2327,15 +2634,15 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                     value={formBarcode}
                     onChange={(e) => setFormBarcode(e.target.value)}
                     placeholder="EAN / Barcode"
-                    className="w-full px-3 py-2 font-mono bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-orange-500"
+                    className="w-full px-3 py-2 font-mono bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-slate-900"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Quantità in Magazzino *
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Giacenza *
                   </label>
                   <input
                     type="number"
@@ -2344,11 +2651,11 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                     required
                     value={formQty}
                     onChange={(e) => setFormQty(Number(e.target.value))}
-                    className="w-full px-3 py-2 font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-orange-500"
+                    className="w-full px-3 py-2 font-mono font-semibold bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-slate-900"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">
+                  <label className="block font-semibold text-slate-700 mb-1">
                     Scorta Minima *
                   </label>
                   <input
@@ -2358,17 +2665,17 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                     required
                     value={formMinStock}
                     onChange={(e) => setFormMinStock(Number(e.target.value))}
-                    className="w-full px-3 py-2 font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-orange-500"
+                    className="w-full px-3 py-2 font-mono font-semibold bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-slate-900"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">
+                  <label className="block font-semibold text-slate-700 mb-1">
                     Unità
                   </label>
                   <select
                     value={formUnit}
                     onChange={(e) => setFormUnit(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-orange-500"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-slate-900"
                   >
                     {UNITS.map((u) => (
                       <option key={u} value={u}>
@@ -2378,7 +2685,7 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">
+                  <label className="block font-semibold text-slate-700 mb-1">
                     Categoria
                   </label>
                   <input
@@ -2386,7 +2693,7 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                     list="warehouse-cat-list"
                     value={formCategory}
                     onChange={(e) => setFormCategory(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-orange-500"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-slate-900"
                   />
                   <datalist id="warehouse-cat-list">
                     {categories.map((c) => (
@@ -2398,7 +2705,7 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">
+                  <label className="block font-semibold text-slate-700 mb-1">
                     Ubicazione / Scaffale
                   </label>
                   <input
@@ -2406,11 +2713,11 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                     value={formLocation}
                     onChange={(e) => setFormLocation(e.target.value)}
                     placeholder="Es. Corsia B · Scaffale 3"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-orange-500"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-slate-900"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">
+                  <label className="block font-semibold text-slate-700 mb-1">
                     Fornitore (opzionale)
                   </label>
                   <input
@@ -2418,19 +2725,18 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                     value={formSupplier}
                     onChange={(e) => setFormSupplier(e.target.value)}
                     placeholder="Nome fornitore"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-orange-500"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-slate-900"
                   />
                 </div>
               </div>
 
-              {/* Photo & File Attachments */}
+              {/* Immagine da file & Allegati */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-                {/* Foto Articolo */}
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-700 flex items-center gap-1.5">
-                      <ImageIcon className="w-3.5 h-3.5 text-orange-600" />
-                      Foto Articolo
+                    <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+                      <ImageIcon className="w-3.5 h-3.5 text-slate-500" />
+                      Immagine Articolo
                     </span>
                     {formPhoto && (
                       <button
@@ -2446,13 +2752,13 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                     <img
                       src={formPhoto}
                       alt="Anteprima articolo"
-                      className="w-full h-32 object-cover rounded-lg border border-slate-200"
+                      className="w-full h-28 object-cover rounded-lg border border-slate-200"
                     />
                   ) : (
                     <label className="h-24 rounded-lg border border-dashed border-slate-300 bg-white hover:bg-slate-50 flex flex-col items-center justify-center gap-1 text-slate-500 cursor-pointer">
-                      <Camera className="w-5 h-5 text-slate-400" />
-                      <span className="text-[11px] font-semibold">
-                        Scatta o scegli foto
+                      <Upload className="w-4 h-4 text-slate-400" />
+                      <span className="text-[11px] font-medium">
+                        Carica immagine dal PC
                       </span>
                       <input
                         type="file"
@@ -2464,16 +2770,15 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                   )}
                 </div>
 
-                {/* Allegati File (PDF / Excel / Schede) */}
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-700 flex items-center gap-1.5">
-                      <Paperclip className="w-3.5 h-3.5 text-sky-600" />
-                      File / Schede Tecniche ({formAttachments.length})
+                    <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+                      <Paperclip className="w-3.5 h-3.5 text-slate-500" />
+                      Schede Tecniche ({formAttachments.length})
                     </span>
-                    <label className="text-[11px] font-bold text-sky-700 hover:underline flex items-center gap-1 cursor-pointer">
+                    <label className="text-[11px] font-semibold text-slate-700 hover:underline flex items-center gap-1 cursor-pointer">
                       <Upload className="w-3 h-3" />
-                      <span>Allega</span>
+                      <span>Allega file</span>
                       <input
                         type="file"
                         onChange={handleAttachmentUpload}
@@ -2483,14 +2788,14 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                   </div>
                   {formAttachments.length === 0 ? (
                     <div className="h-24 rounded-lg border border-dashed border-slate-300 bg-white flex items-center justify-center text-[11px] text-slate-400 text-center px-3">
-                      PDF, Excel, disegni o foto extra (max 4 MB per file)
+                      PDF, Excel o schede tecniche (max 4 MB per file)
                     </div>
                   ) : (
-                    <div className="max-h-32 overflow-y-auto space-y-1">
+                    <div className="max-h-28 overflow-y-auto space-y-1">
                       {formAttachments.map((att) => (
                         <div
                           key={att.id}
-                          className="px-2 py-1.5 rounded-lg bg-white border border-slate-200 flex items-center justify-between gap-2"
+                          className="px-2 py-1.5 rounded-md bg-white border border-slate-200 flex items-center justify-between gap-2"
                         >
                           <span className="truncate text-[11px] font-medium text-slate-800">
                             {att.name} ({formatBytes(att.sizeBytes)})
@@ -2514,7 +2819,7 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
+                <label className="block font-semibold text-slate-700 mb-1">
                   Note (opzionale)
                 </label>
                 <input
@@ -2522,20 +2827,20 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                   value={formNotes}
                   onChange={(e) => setFormNotes(e.target.value)}
                   placeholder="Specifiche, dimensioni, codice fornitore..."
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-orange-500"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-slate-900"
                 />
               </div>
 
-              <label className="flex items-center gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 cursor-pointer">
+              <label className="flex items-center gap-2 p-3 rounded-lg bg-slate-50 border border-slate-200 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={formFavorite}
                   onChange={(e) => setFormFavorite(e.target.checked)}
-                  className="accent-amber-500 w-4 h-4"
+                  className="accent-slate-900 w-4 h-4"
                 />
                 <Star className="w-4 h-4 text-amber-500 fill-amber-400" />
-                <span className="font-bold text-amber-950">
-                  Aggiungi ai Preferiti (articoli più utilizzati)
+                <span className="font-semibold text-slate-800">
+                  Aggiungi ai Preferiti
                 </span>
               </label>
 
@@ -2543,138 +2848,18 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                 <button
                   type="button"
                   onClick={() => setEditorOpen(false)}
-                  className="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 font-semibold cursor-pointer"
+                  className="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 font-medium cursor-pointer"
                 >
                   Annulla
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-lg bg-orange-500 hover:bg-orange-400 text-slate-950 font-extrabold cursor-pointer shadow-xs"
+                  className="px-5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold cursor-pointer"
                 >
-                  {editingItemId
-                    ? 'Salva Modifiche'
-                    : 'Memorizza sul Gestionale'}
+                  {editingItemId ? 'Salva Modifiche' : 'Salva Articolo'}
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* =====================================================================
-          MODAL: SCHEDA DETTAGLIO ARTICOLO & ALLEGATI
-      ===================================================================== */}
-      {previewItem && (
-        <div
-          className="fixed inset-0 z-[85] bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4"
-          onClick={() => setPreviewItem(null)}
-        >
-          <div
-            className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="px-5 py-3.5 bg-[#0d101c] text-white flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-sm font-bold truncate">{previewItem.name}</div>
-                <div className="text-[11px] font-mono text-white/60">
-                  SKU {previewItem.sku}
-                  {previewItem.barcode ? ` · Barcode ${previewItem.barcode}` : ''}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPreviewItem(null)}
-                className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-5 overflow-y-auto space-y-4 text-xs">
-              {previewItem.photoDataUrl && (
-                <img
-                  src={previewItem.photoDataUrl}
-                  alt={previewItem.name}
-                  className="w-full max-h-60 object-contain rounded-xl bg-slate-100 border border-slate-200"
-                />
-              )}
-
-              <div className="grid grid-cols-3 gap-2.5 text-center">
-                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
-                  <div className="text-[10px] text-slate-500 uppercase">Giacenza</div>
-                  <div className="text-lg font-black font-mono text-slate-900 tabular-nums">
-                    {previewItem.quantity} {previewItem.unit}
-                  </div>
-                </div>
-                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
-                  <div className="text-[10px] text-slate-500 uppercase">Scorta Min.</div>
-                  <div className="text-lg font-black font-mono text-slate-900 tabular-nums">
-                    {previewItem.minStock} {previewItem.unit}
-                  </div>
-                </div>
-                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
-                  <div className="text-[10px] text-slate-500 uppercase">Ubicazione</div>
-                  <div className="text-xs font-bold text-slate-900 mt-1 truncate">
-                    {previewItem.location || 'Magazzino'}
-                  </div>
-                </div>
-              </div>
-
-              {previewItem.notes && (
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-700">
-                  <strong>Note:</strong> {previewItem.notes}
-                </div>
-              )}
-
-              {previewItem.attachments && previewItem.attachments.length > 0 && (
-                <div className="space-y-2">
-                  <div className="font-bold text-slate-700">
-                    File Allegati ({previewItem.attachments.length})
-                  </div>
-                  <div className="space-y-1.5">
-                    {previewItem.attachments.map((att) => (
-                      <div
-                        key={att.id}
-                        className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2"
-                      >
-                        <span className="flex items-center gap-2 min-w-0">
-                          <FileText className="w-4 h-4 text-sky-600 shrink-0" />
-                          <span className="truncate font-semibold text-slate-800">
-                            {att.name}
-                          </span>
-                          <span className="font-mono text-[10px] text-slate-400 shrink-0">
-                            {formatBytes(att.sizeBytes)}
-                          </span>
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleDownloadAttachment(att)}
-                          className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-semibold flex items-center gap-1 cursor-pointer shrink-0"
-                        >
-                          <Download className="w-3 h-3" />
-                          <span>Scarica</span>
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const target = previewItem;
-                    setPreviewItem(null);
-                    openEditItemModal(target);
-                  }}
-                  className="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Pencil className="w-3.5 h-3.5" />
-                  <span>Modifica Articolo</span>
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       )}
