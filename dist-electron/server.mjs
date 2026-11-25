@@ -11,6 +11,7 @@ import express from "express";
 import { createServer } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import PDFDocument from "pdfkit";
+import { zipSync } from "fflate";
 if (typeof globalThis.__dirname !== "undefined") {
   delete globalThis.__dirname;
 }
@@ -3204,6 +3205,10 @@ async function startServer() {
     if (download) {
       res.setHeader("Content-Type", "text/plain; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="${meta.fileName}"`);
+      if (meta.fileName.toLowerCase().endsWith(".bat")) {
+        const crlf = fs.readFileSync(resolved, "utf-8").replace(/\r?\n/g, "\r\n");
+        return res.send(crlf);
+      }
       return res.sendFile(resolved);
     }
     const content = fs.readFileSync(resolved, "utf-8");
@@ -3215,6 +3220,93 @@ async function startServer() {
       title: meta.title,
       content
     });
+  });
+  app.get("/api/system/desktop-project-zip", requireAuth, (_req, res) => {
+    try {
+      const projectRoot = path.resolve(process.cwd());
+      const zipEntries = {};
+      const zipPrefix = "METATRON-Desktop-Builder";
+      const allowedRootFiles = [
+        "package.json",
+        "tsconfig.json",
+        "vite.config.ts",
+        "index.html",
+        "metadata.json",
+        "server.ts",
+        ".env.example",
+        ".gitignore"
+      ];
+      const allowedDirs = [
+        "src",
+        "public",
+        "scripts",
+        "desktop-app",
+        "os-installer",
+        path.join(".github", "workflows")
+      ];
+      const skippedFileNames = /* @__PURE__ */ new Set(["CaricoStudio_Desktop_Windows.html"]);
+      const addSafeFile = (absPath, zipRelPath) => {
+        const resolved = path.resolve(absPath);
+        if (!resolved.startsWith(projectRoot + path.sep)) return;
+        let stat;
+        try {
+          stat = fs.lstatSync(resolved);
+        } catch {
+          return;
+        }
+        if (stat.isSymbolicLink() || !stat.isFile()) return;
+        const baseName = path.basename(resolved);
+        if (skippedFileNames.has(baseName)) return;
+        if (baseName.toLowerCase().endsWith(".bat")) {
+          const crlfText = fs.readFileSync(resolved, "utf-8").replace(/\r?\n/g, "\r\n");
+          zipEntries[`${zipPrefix}/${zipRelPath}`] = Buffer.from(crlfText, "utf-8");
+        } else {
+          zipEntries[`${zipPrefix}/${zipRelPath}`] = new Uint8Array(
+            fs.readFileSync(resolved)
+          );
+        }
+      };
+      const walkAllowedDir = (relDir) => {
+        const absDir = path.resolve(projectRoot, relDir);
+        if (!absDir.startsWith(projectRoot + path.sep) || !fs.existsSync(absDir)) return;
+        const entries = fs.readdirSync(absDir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.isSymbolicLink()) continue;
+          if (entry.name === "node_modules" || entry.name === ".git") continue;
+          const childRel = path.posix.join(relDir.replace(/\\/g, "/"), entry.name);
+          const childAbs = path.join(absDir, entry.name);
+          if (entry.isDirectory()) {
+            walkAllowedDir(childRel);
+          } else if (entry.isFile()) {
+            addSafeFile(childAbs, childRel);
+          }
+        }
+      };
+      for (const fileName of allowedRootFiles) {
+        addSafeFile(path.join(projectRoot, fileName), fileName);
+      }
+      for (const dirName of allowedDirs) {
+        walkAllowedDir(dirName);
+      }
+      const winBatAbs = path.join(DESKTOP_APP_DIR, "CREA-SOFTWARE-WINDOWS.bat");
+      if (fs.existsSync(winBatAbs)) {
+        addSafeFile(winBatAbs, "CREA-SOFTWARE-WINDOWS.bat");
+      }
+      const zipped = zipSync(zipEntries, { level: 6 });
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader(
+        "Content-Disposition",
+        'attachment; filename="METATRON-Desktop-Builder.zip"'
+      );
+      res.setHeader("Cache-Control", "no-store");
+      return res.send(Buffer.from(zipped));
+    } catch (err) {
+      console.error("[METATRON Desktop ZIP] Errore generazione pacchetto:", err);
+      return res.status(500).json({
+        ok: false,
+        error: "Errore durante la creazione del pacchetto ZIP."
+      });
+    }
   });
   app.get(
     "/api/employer/users/:userId/details",

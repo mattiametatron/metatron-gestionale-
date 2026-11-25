@@ -28,16 +28,24 @@ jobs:
       - name: Checkout sorgenti
         uses: actions/checkout@v4
 
-      - name: Configura Node.js 20
+      - name: Verifica file desktop presenti
+        shell: bash
+        run: |
+          if [ ! -f "desktop-app/electron-builder.json" ] || [ ! -f "scripts/build-desktop-server.mjs" ]; then
+            echo "::error::Mancano i file desktop-app/ o scripts/build-desktop-server.mjs nel repository. Fai prima Push/Sincronizza da AI Studio su GitHub!"
+            exit 1
+          fi
+
+      - name: Configura Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Installa dipendenze
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       - name: Installa Electron e electron-builder
-        run: npm install --no-save electron electron-builder
+        run: npm install --save-dev --legacy-peer-deps electron electron-builder
 
       - name: Compila frontend e motore server interno
         run: |
@@ -45,7 +53,9 @@ jobs:
           node scripts/build-desktop-server.mjs
 
       - name: Genera pacchetto Desktop installabile
-        run: npx electron-builder ${{ matrix.platform_flag }} --config desktop-app/electron-builder.json
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder ${{ matrix.platform_flag }} --config desktop-app/electron-builder.json --publish never
 
       - name: Carica pacchetto compilato (ZIP scaricabile)
         uses: actions/upload-artifact@v4

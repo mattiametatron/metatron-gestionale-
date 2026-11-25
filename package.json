@@ -1,5 +1,7 @@
 {
   "name": "metatron-caricostudio",
+  "description": "METATRON CaricoStudio - Gestionale Logistica, Magazzino e Desktop OS",
+  "author": "METATRON CaricoStudio <support@metatron.local>",
   "private": true,
   "version": "1.0.0",
   "type": "module",

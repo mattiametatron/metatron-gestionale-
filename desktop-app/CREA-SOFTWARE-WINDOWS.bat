@@ -38,7 +38,7 @@ if %errorlevel% neq 0 (
 )
 
 echo [1/4] Installazione dipendenze progetto...
-call npm install
+call npm install --legacy-peer-deps
 if %errorlevel% neq 0 (
   echo [ERRORE] Installazione dipendenze fallita.
   pause
@@ -47,7 +47,7 @@ if %errorlevel% neq 0 (
 
 echo.
 echo [2/4] Installazione motore desktop Electron e compilatore .exe...
-call npm install --no-save electron electron-builder
+call npm install --save-dev --legacy-peer-deps electron electron-builder
 if %errorlevel% neq 0 (
   echo [ERRORE] Installazione Electron fallita.
   pause
@@ -72,7 +72,8 @@ if %errorlevel% neq 0 (
 
 echo.
 echo [4/4] Generazione Installer Windows (.exe) e Versione Portable (.exe)...
-call npx electron-builder --win --config desktop-app/electron-builder.json
+set CSC_IDENTITY_AUTO_DISCOVERY=false
+call npx electron-builder --win --config desktop-app/electron-builder.json --publish never
 if %errorlevel% neq 0 (
   echo [ERRORE] Creazione file .exe fallita.
   pause
