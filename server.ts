@@ -5305,9 +5305,13 @@ ${JSON.stringify(toTranslate, null, 2)}`;
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(DIST_ROOT));
+    const indexHtmlPath = path.join(DIST_ROOT, 'index.html');
+    console.log(
+      `[CaricoStudio] Static DIST_ROOT=${DIST_ROOT} (index.html=${fs.existsSync(indexHtmlPath)})`
+    );
+    app.use(express.static(DIST_ROOT, { dotfiles: 'allow' }));
     app.get('*', (_req, res) => {
-      res.sendFile(path.join(DIST_ROOT, 'index.html'));
+      res.sendFile(indexHtmlPath, { dotfiles: 'allow' });
     });
   }
 

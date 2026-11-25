@@ -107,10 +107,12 @@ function resolveConfiguredGithubRepo(overrideSlug) {
 
   // 2. Configurazione pre-compilata automaticamente da GitHub Actions
   const appPath = app.getAppPath();
+  const resourcesBase = process.resourcesPath || appPath;
   const unpackedBase = appPath.endsWith('.asar')
     ? appPath.replace(/\.asar$/, '.asar.unpacked')
     : appPath;
   const candidateConfigs = [
+    path.join(resourcesBase, 'desktop-app', 'update-config.json'),
     path.join(unpackedBase, 'desktop-app', 'update-config.json'),
     path.join(appPath, 'desktop-app', 'update-config.json'),
   ];
@@ -301,6 +303,10 @@ function waitForServerReady(port, timeoutMs = 25000) {
   });
 }
 
+function isOutsideAsar(p) {
+  return Boolean(p) && !p.includes(`.asar${path.sep}`);
+}
+
 function resolveAppPaths() {
   const appPath = app.getAppPath();
   const unpackedBase = appPath.endsWith('.asar')
@@ -309,22 +315,34 @@ function resolveAppPaths() {
   const resourcesBase = process.resourcesPath || appPath;
 
   const candidateServers = [
+    path.join(resourcesBase, 'dist-electron', 'server.cjs'),
     path.join(unpackedBase, 'dist-electron', 'server.cjs'),
     path.join(appPath, 'dist-electron', 'server.cjs'),
-    path.join(resourcesBase, 'dist-electron', 'server.cjs'),
+    path.join(resourcesBase, 'dist-electron', 'server.mjs'),
     path.join(unpackedBase, 'dist-electron', 'server.mjs'),
     path.join(appPath, 'dist-electron', 'server.mjs'),
-    path.join(resourcesBase, 'dist-electron', 'server.mjs'),
   ];
-  const serverEntry = candidateServers.find((p) => fs.existsSync(p));
+  const serverEntry =
+    candidateServers.find((p) => isOutsideAsar(p) && fs.existsSync(p)) ||
+    candidateServers.find((p) => fs.existsSync(p));
 
   const candidateDists = [
+    path.join(resourcesBase, 'dist'),
     path.join(unpackedBase, 'dist'),
     path.join(appPath, 'dist'),
-    path.join(resourcesBase, 'dist'),
   ];
-  const distDir = candidateDists.find((p) => fs.existsSync(p)) || candidateDists[0];
-  const safeCwd = fs.existsSync(unpackedBase) ? unpackedBase : path.dirname(serverEntry || appPath);
+  const distDir =
+    candidateDists.find(
+      (p) => isOutsideAsar(p) && fs.existsSync(path.join(p, 'index.html'))
+    ) ||
+    candidateDists.find((p) => fs.existsSync(path.join(p, 'index.html'))) ||
+    candidateDists[0];
+
+  const safeCwd = fs.existsSync(path.join(resourcesBase, 'dist-electron'))
+    ? resourcesBase
+    : fs.existsSync(unpackedBase)
+    ? unpackedBase
+    : path.dirname(serverEntry || appPath);
 
   return { serverEntry, distDir, appPath, unpackedBase, safeCwd };
 }

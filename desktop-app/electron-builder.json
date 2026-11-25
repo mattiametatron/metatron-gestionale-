@@ -6,23 +6,34 @@
     "output": "release"
   },
   "files": [
-    "dist/**/*",
-    "dist-electron/**/*",
     "desktop-app/main.cjs",
     "desktop-app/preload.cjs",
-    "desktop-app/update-config.json",
-    "os-installer/**/*",
     "public/pwa-512x512.png",
     "package.json",
-    "!dist/CaricoStudio_Desktop_Windows.html",
     "!**/*.map"
   ],
-  "asarUnpack": [
-    "dist-electron/**/*",
-    "dist/**/*",
-    "desktop-app/update-config.json",
-    "os-installer/**/*",
-    "package.json"
+  "extraResources": [
+    {
+      "from": "dist",
+      "to": "dist",
+      "filter": [
+        "**/*",
+        "!CaricoStudio_Desktop_Windows.html",
+        "!**/*.map"
+      ]
+    },
+    {
+      "from": "dist-electron",
+      "to": "dist-electron"
+    },
+    {
+      "from": "desktop-app/update-config.json",
+      "to": "desktop-app/update-config.json"
+    },
+    {
+      "from": "os-installer",
+      "to": "os-installer"
+    }
   ],
   "extraMetadata": {
     "main": "desktop-app/main.cjs"

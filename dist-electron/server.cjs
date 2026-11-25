@@ -226264,9 +226264,13 @@ ${JSON.stringify(toTranslate, null, 2)}`;
     });
     app.use(vite.middlewares);
   } else {
-    app.use(import_express.default.static(DIST_ROOT));
+    const indexHtmlPath = import_path.default.join(DIST_ROOT, "index.html");
+    console.log(
+      `[CaricoStudio] Static DIST_ROOT=${DIST_ROOT} (index.html=${import_fs5.default.existsSync(indexHtmlPath)})`
+    );
+    app.use(import_express.default.static(DIST_ROOT, { dotfiles: "allow" }));
     app.get("*", (_req, res) => {
-      res.sendFile(import_path.default.join(DIST_ROOT, "index.html"));
+      res.sendFile(indexHtmlPath, { dotfiles: "allow" });
     });
   }
   server.on("error", (err2) => {
