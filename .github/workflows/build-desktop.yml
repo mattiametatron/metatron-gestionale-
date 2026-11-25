@@ -41,6 +41,7 @@ jobs:
           node-version: '22'
 
       - name: Imposta versione e repository aggiornamenti automatici
+        id: meta
         shell: bash
         env:
           INPUT_VERSION: ${{ inputs.version }}
@@ -67,6 +68,7 @@ jobs:
                 JSON.stringify({ owner, repo, version: ver }, null, 2) + "\n"
               );
             }
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${ver}\n`);
             console.log("Versione impostata:", ver, "Repo:", process.env.GITHUB_REPO);
           '
 
@@ -83,14 +85,13 @@ jobs:
           npm run build
           node scripts/build-desktop-server.mjs
 
-      - name: Genera eseguibile Windows (.exe) e pubblica Release se attivo
+      - name: Genera eseguibile Windows (.exe)
         shell: bash
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PUBLISH_FLAG: ${{ (github.event_name == 'push' || inputs.publish_release != false) && 'always' || 'never' }}
         run: |
-          npx electron-builder --win --config desktop-app/electron-builder.json --publish "$PUBLISH_FLAG"
+          npx electron-builder --win --config desktop-app/electron-builder.json --publish never
+          ls -la release/
 
       - name: Carica eseguibile Windows (ZIP scaricabile)
         uses: actions/upload-artifact@v4
@@ -99,3 +100,31 @@ jobs:
           path: |
             release/*.exe
           if-no-files-found: error
+
+      - name: Pubblica GitHub Release per aggiornamenti automatici in-app
+        if: ${{ github.event_name == 'push' || inputs.publish_release != false }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APP_VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          TAG="v${APP_VERSION}"
+          FILES=()
+          for f in release/*.exe release/*.blockmap release/latest.yml; do
+            if [ -f "$f" ]; then
+              FILES+=("$f")
+            fi
+          done
+          if [ ${#FILES[@]} -eq 0 ]; then
+            echo "::error::Nessun file eseguibile trovato in release/."
+            exit 1
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${FILES[@]}" --clobber
+          else
+            gh release create "$TAG" "${FILES[@]}" \
+              --title "METATRON CaricoStudio v${APP_VERSION}" \
+              --notes "Versione desktop Windows METATRON CaricoStudio v${APP_VERSION}. I dati salvati restano al sicuro nella cartella persistente del sistema." \
+              --target "$GITHUB_SHA" \
+              --latest
+          fi

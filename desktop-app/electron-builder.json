@@ -27,6 +27,7 @@
   "extraMetadata": {
     "main": "desktop-app/main.cjs"
   },
+  "generateUpdatesFilesForAllChannels": true,
   "publish": [
     {
       "provider": "github",
@@ -39,10 +40,6 @@
       {
         "target": "nsis",
         "arch": ["x64"]
-      },
-      {
-        "target": "portable",
-        "arch": ["x64"]
       }
     ]
   },
@@ -53,9 +50,6 @@
     "createStartMenuShortcut": true,
     "shortcutName": "METATRON CaricoStudio",
     "artifactName": "METATRON-CaricoStudio-Setup-${version}.exe"
-  },
-  "portable": {
-    "artifactName": "METATRON-CaricoStudio-Portable-${version}.exe"
   },
   "mac": {
     "icon": "public/pwa-512x512.png",
