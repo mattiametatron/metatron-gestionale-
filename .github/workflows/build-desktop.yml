@@ -1,4 +1,4 @@
-name: Build METATRON Desktop Software (.exe / .dmg / .AppImage)
+name: Build METATRON Desktop Windows (.exe)
 
 on:
   workflow_dispatch:
@@ -19,22 +19,9 @@ permissions:
   contents: write
 
 jobs:
-  build-desktop:
-    name: Build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            platform_flag: --win
-            artifact_name: METATRON-Desktop-Windows-EXE
-          - os: macos-latest
-            platform_flag: --mac
-            artifact_name: METATRON-Desktop-macOS-DMG
-          - os: ubuntu-latest
-            platform_flag: --linux
-            artifact_name: METATRON-Desktop-Linux-AppImage
+  build-windows:
+    name: Build Windows (.exe)
+    runs-on: windows-latest
 
     steps:
       - name: Checkout sorgenti
@@ -96,20 +83,19 @@ jobs:
           npm run build
           node scripts/build-desktop-server.mjs
 
-      - name: Genera pacchetto Desktop installabile (e pubblica Release se attivo)
+      - name: Genera eseguibile Windows (.exe) e pubblica Release se attivo
+        shell: bash
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUBLISH_FLAG: ${{ (github.event_name == 'push' || inputs.publish_release != false) && 'always' || 'never' }}
         run: |
-          npx electron-builder ${{ matrix.platform_flag }} --config desktop-app/electron-builder.json --publish ${{ (github.event_name == 'push' || inputs.publish_release != false) && 'always' || 'never' }}
+          npx electron-builder --win --config desktop-app/electron-builder.json --publish "$PUBLISH_FLAG"
 
-      - name: Carica pacchetto compilato (ZIP scaricabile)
+      - name: Carica eseguibile Windows (ZIP scaricabile)
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
+          name: METATRON-Desktop-Windows-EXE
           path: |
             release/*.exe
-            release/*.dmg
-            release/*.AppImage
-            release/*.deb
           if-no-files-found: error
