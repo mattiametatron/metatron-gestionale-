@@ -1,0 +1,59 @@
+name: Build METATRON Desktop Software (.exe / .dmg / .AppImage)
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-desktop:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform_flag: --win
+            artifact_name: METATRON-Desktop-Windows-EXE
+          - os: macos-latest
+            platform_flag: --mac
+            artifact_name: METATRON-Desktop-macOS-DMG
+          - os: ubuntu-latest
+            platform_flag: --linux
+            artifact_name: METATRON-Desktop-Linux-AppImage
+
+    steps:
+      - name: Checkout sorgenti
+        uses: actions/checkout@v4
+
+      - name: Configura Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Installa dipendenze
+        run: npm install
+
+      - name: Installa Electron e electron-builder
+        run: npm install --no-save electron electron-builder
+
+      - name: Compila frontend e motore server interno
+        run: |
+          npm run build
+          node scripts/build-desktop-server.mjs
+
+      - name: Genera pacchetto Desktop installabile
+        run: npx electron-builder ${{ matrix.platform_flag }} --config desktop-app/electron-builder.json
+
+      - name: Carica pacchetto compilato (ZIP scaricabile)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            release/*.exe
+            release/*.dmg
+            release/*.AppImage
+            release/*.deb
+          if-no-files-found: error
