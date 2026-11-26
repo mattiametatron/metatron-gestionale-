@@ -13,12 +13,14 @@ import {
   Trash2,
   X,
   Search,
-  Check,
   ChevronsDown,
-  Image as ImageIcon,
   QrCode,
   Barcode,
   RefreshCw,
+  Minus,
+  Plus,
+  CheckCircle2,
+  RotateCcw,
 } from 'lucide-react';
 import {
   AuthUser,
@@ -32,11 +34,13 @@ import {
   connectTiMiniBluetooth,
   downloadThermalLabelPdf,
   feedTiMiniPaper,
+  isTiMiniConnected,
   isWebBluetoothSupported,
   LabelBorderStyle,
   LabelHeightPreset,
   printRowsToTiMini,
   printThermalCanvasViaSystemDialog,
+  printTiMiniTestSlip,
   renderTiMiniLabelCanvas,
   ThermalDarknessLevel,
   ThermalDitherMode,
@@ -81,6 +85,21 @@ function createDefaultDesign(company?: string): TiMiniLabelDesign {
   };
 }
 
+/** Bordo dentellato realistico da rotolo carta termica */
+const ThermalTearEdge: React.FC<{ flip?: boolean }> = ({ flip = false }) => (
+  <svg
+    viewBox="0 0 320 8"
+    preserveAspectRatio="none"
+    aria-hidden="true"
+    className={`w-full h-2 block text-white ${flip ? 'rotate-180' : ''}`}
+  >
+    <polygon
+      fill="currentColor"
+      points="0,8 8,0 16,8 24,0 32,8 40,0 48,8 56,0 64,8 72,0 80,8 88,0 96,8 104,0 112,8 120,0 128,8 136,0 144,8 152,0 160,8 168,0 176,8 184,0 192,8 200,0 208,8 216,0 224,8 232,0 240,8 248,0 256,8 264,0 272,8 280,0 288,8 296,0 304,8 312,0 320,8"
+    />
+  </svg>
+);
+
 export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
   currentUser,
   inventory,
@@ -90,6 +109,9 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
   const [activeTab, setActiveTab] = useState<'editor' | 'warehouse' | 'commessa' | 'templates'>(
     'editor'
   );
+  const [inspectorTab, setInspectorTab] = useState<'content' | 'codes' | 'printer'>('content');
+  const [previewZoom, setPreviewZoom] = useState<'100' | '125'>('100');
+
   const [design, setDesign] = useState<TiMiniLabelDesign>(() =>
     createDefaultDesign(currentUser.company)
   );
@@ -103,8 +125,9 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
     }
   });
 
-  // Impostazioni hardware TiMini
+  // Stato hardware reale Bluetooth TiMini
   const [connection, setConnection] = useState<TiMiniConnection | null>(null);
+  const [connectedAt, setConnectedAt] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
   const [printProgress, setPrintProgress] = useState<{ pct: number; label: string } | null>(null);
@@ -132,13 +155,15 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
   const [warehouseSearch, setWarehouseSearch] = useState('');
   const [selectedCommessaId, setSelectedCommessaId] = useState<string>(activeLoad.id);
   const [templateNameInput, setTemplateNameInput] = useState('');
-  const [notice, setNotice] = useState<{ text: string; tone?: 'normal' | 'error' } | null>(null);
+  const [notice, setNotice] = useState<{ text: string; tone?: 'normal' | 'success' | 'error' } | null>(
+    null
+  );
 
-  const showNotice = (text: string, tone: 'normal' | 'error' = 'normal') => {
+  const showNotice = (text: string, tone: 'normal' | 'success' | 'error' = 'normal') => {
     setNotice({ text, tone });
     setTimeout(() => {
       setNotice((curr) => (curr?.text === text ? null : curr));
-    }, 4200);
+    }, 4500);
   };
 
   // Ascolta eventi selettore Bluetooth in Electron Desktop
@@ -151,14 +176,28 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
     return () => unsubscribe();
   }, []);
 
-  // Cleanup connessione BLE alla chiusura della finestra
+  // Verifica reale stato connessione GATT ogni 3 secondi + cleanup alla chiusura
+  useEffect(() => {
+    if (!connection) return;
+    const timer = window.setInterval(() => {
+      if (!isTiMiniConnected(connection)) {
+        setConnection(null);
+        setConnectedAt(null);
+        showNotice('Connessione Bluetooth con la stampante TiMini persa.', 'error');
+      }
+    }, 3000);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [connection]);
+
   useEffect(() => {
     return () => {
       connection?.disconnect();
     };
   }, [connection]);
 
-  // Rigenera l'anteprima termica 1-bit 384px ad ogni modifica del design
+  // Rigenera l'anteprima termica 1-bit 384px ad ogni modifica e quando si torna al tab Editor
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -195,7 +234,7 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [design]);
+  }, [design, activeTab]);
 
   const handleConnectBluetooth = async () => {
     if (isConnecting) return;
@@ -205,10 +244,14 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
       setElectronBtDevices(null);
       conn.device?.addEventListener?.('gattserverdisconnected', () => {
         setConnection(null);
+        setConnectedAt(null);
         showNotice('Stampante TiMini disconnessa.');
       });
       setConnection(conn);
-      showNotice(`Connessa via Bluetooth: ${conn.deviceName}`);
+      setConnectedAt(
+        new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+      );
+      showNotice(`Stampante collegata via Bluetooth: ${conn.deviceName}`, 'success');
     } catch (err: any) {
       setElectronBtDevices(null);
       const msg = err?.message || 'Connessione Bluetooth annullata o non riuscita.';
@@ -223,6 +266,7 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
   const handleDisconnectBluetooth = () => {
     connection?.disconnect();
     setConnection(null);
+    setConnectedAt(null);
     showNotice('Stampante Bluetooth scollegata.');
   };
 
@@ -244,13 +288,15 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
   };
 
   const handlePrintBluetooth = async () => {
-    if (!connection) {
-      showNotice('Collega prima la stampante TiMini via Bluetooth.', 'error');
+    if (!connection || !isTiMiniConnected(connection)) {
+      setConnection(null);
+      setConnectedAt(null);
+      showNotice('Stampante non collegata. Premi Connetti TiMini BLE.', 'error');
       return;
     }
     if (latestRowsRef.current.length === 0) return;
     setIsPrinting(true);
-    setPrintProgress({ pct: 0, label: 'Avvio invio Bluetooth...' });
+    setPrintProgress({ pct: 0, label: 'Invio Bluetooth...' });
     try {
       await printRowsToTiMini(connection, latestRowsRef.current, {
         darkness,
@@ -259,7 +305,10 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
         chunkSize,
         onProgress: (pct, label) => setPrintProgress({ pct, label }),
       });
-      showNotice(`Stampate ${copies} etichett${copies === 1 ? 'a' : 'e'} su ${connection.deviceName}.`);
+      showNotice(
+        `Stampate ${copies} etichett${copies === 1 ? 'a' : 'e'} su ${connection.deviceName}.`,
+        'success'
+      );
     } catch (err: any) {
       showNotice(
         err?.message || 'Errore durante la trasmissione Bluetooth alla stampante.',
@@ -271,8 +320,27 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
     }
   };
 
+  const handlePrintTestSlip = async () => {
+    if (!connection || !isTiMiniConnected(connection)) {
+      showNotice('Collega prima la stampante TiMini via Bluetooth.', 'error');
+      return;
+    }
+    setIsPrinting(true);
+    setPrintProgress({ pct: 35, label: 'Invio ricevuta di test...' });
+    try {
+      await printTiMiniTestSlip(connection, darkness, chunkSize);
+      setPrintProgress({ pct: 100, label: 'Test completato' });
+      showNotice(`Test di stampa inviato a ${connection.deviceName}.`, 'success');
+    } catch (err: any) {
+      showNotice(err?.message || 'Errore durante la stampa di prova.', 'error');
+    } finally {
+      setIsPrinting(false);
+      setTimeout(() => setPrintProgress(null), 1200);
+    }
+  };
+
   const handleFeedPaper = async () => {
-    if (!connection) {
+    if (!connection || !isTiMiniConnected(connection)) {
       showNotice('Collega prima la stampante TiMini.', 'error');
       return;
     }
@@ -287,7 +355,7 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
   const handlePrintSystem = () => {
     if (!latestPreviewCanvasRef.current) return;
     printThermalCanvasViaSystemDialog(latestPreviewCanvasRef.current, copies);
-    showNotice('Finestra di stampa Windows/USB aperta.');
+    showNotice('Finestra di stampa Windows / USB aperta.');
   };
 
   const handleDownloadPdf = () => {
@@ -311,7 +379,7 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    showNotice('Immagine PNG 384px salvata (pronta anche per app Tiny Print su telefono).');
+    showNotice('Immagine PNG 384px salvata.');
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -348,7 +416,7 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
       localStorage.setItem(`${TEMPLATES_KEY_PREFIX}${currentUser.id}`, JSON.stringify(nextList));
     } catch {}
     setTemplateNameInput('');
-    showNotice(`Modello "${name}" salvato.`);
+    showNotice(`Modello "${name}" salvato.`, 'success');
   };
 
   const handleDeleteTemplate = (tplId: string) => {
@@ -360,7 +428,40 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
     showNotice('Modello rimosso.');
   };
 
-  // Carica un articolo di Magazzino direttamente nell'etichetta
+  const applyQuickPreset = (kind: 'stock' | 'pallet' | 'shipping') => {
+    if (kind === 'stock') {
+      setDesign(createDefaultDesign(currentUser.company));
+    } else if (kind === 'pallet') {
+      setDesign((prev) => ({
+        ...prev,
+        headerTag: 'IDENTIFICATIVO BANCALE',
+        title: activeLoad.client || 'BANCALE SPEDIZIONE',
+        subtitle: `${activeLoad.destination || 'Magazzino'} · 120×80 cm`,
+        codeText: `${activeLoad.code}-B01`,
+        footerText: `Commessa ${activeLoad.code}`,
+        includeBarcode: true,
+        barcodeContent: `${activeLoad.code}-B01`,
+        includeQr: true,
+        qrContent: `${activeLoad.code}:B01`,
+        borderStyle: 'header_banner',
+      }));
+    } else {
+      setDesign((prev) => ({
+        ...prev,
+        headerTag: 'ETICHETTA COLLO · FRAGILE',
+        title: activeLoad.client || 'DESTINATARIO',
+        subtitle: activeLoad.destination || 'Indirizzo spedizione',
+        codeText: activeLoad.code,
+        footerText: 'MANEGGIARE CON CURA',
+        includeBarcode: true,
+        barcodeContent: activeLoad.code,
+        includeQr: false,
+        borderStyle: 'frame',
+      }));
+    }
+    setActiveTab('editor');
+  };
+
   const loadFromWarehouseItem = (item: WarehouseStockItem) => {
     const barcodeVal = item.barcode || item.sku;
     setDesign((prev) => ({
@@ -410,13 +511,15 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
   }, [inventory.items, warehouseSearch]);
 
   const btSupported = isWebBluetoothSupported();
+  const isConnected = Boolean(connection);
 
   return (
-    <div className="h-full flex bg-slate-50 text-slate-900 overflow-hidden">
-      {/* Sidebar Sinistra */}
-      <aside className="w-60 shrink-0 bg-white border-r border-slate-200 flex flex-col">
-        <div className="px-4 py-4 border-b border-slate-200">
-          <div className="text-sm font-semibold text-slate-900 tracking-tight">
+    <div className="h-full flex bg-[#F4F6F9] text-slate-900 overflow-hidden select-none">
+      {/* SIDEBAR SINISTRA */}
+      <aside className="w-64 shrink-0 bg-white border-r border-slate-200/90 flex flex-col">
+        {/* Titolo Applicazione */}
+        <div className="px-5 pt-5 pb-4 border-b border-slate-100">
+          <div className="text-[15px] font-semibold text-slate-900 tracking-tight">
             TiMini Print
           </div>
           <div className="text-xs text-slate-500 mt-0.5 tabular-nums">
@@ -424,87 +527,150 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
           </div>
         </div>
 
-        <nav className="p-2.5 space-y-0.5 flex-1 overflow-y-auto">
-          <div className="px-2.5 py-1.5 text-[11px] font-medium text-slate-400">
+        {/* Navigazione Sorgenti */}
+        <nav className="px-3 py-4 space-y-1">
+          <div className="px-2.5 pb-1.5 text-[11px] font-medium text-slate-400">
             Sorgente etichetta
           </div>
           {(
             [
-              { id: 'editor', label: 'Editor Etichetta', icon: FileText },
+              { id: 'editor', label: 'Editor Etichetta', icon: FileText, count: null },
               {
                 id: 'warehouse',
-                label: `Da Magazzino (${inventory.items.length})`,
+                label: 'Da Magazzino',
                 icon: Package,
+                count: inventory.items.length,
               },
-              { id: 'commessa', label: 'Da Commessa & Bancali', icon: Layers },
+              {
+                id: 'commessa',
+                label: 'Commesse & Bancali',
+                icon: Layers,
+                count: loads.length,
+              },
               {
                 id: 'templates',
-                label: `Modelli Salvati (${templates.length})`,
+                label: 'Modelli Salvati',
                 icon: Bookmark,
+                count: templates.length,
               },
             ] as const
           ).map((item) => {
             const Icon = item.icon;
+            const active = activeTab === item.id;
             return (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                  activeTab === item.id
+                className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors cursor-pointer ${
+                  active
                     ? 'bg-slate-900 text-white'
                     : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                 }`}
               >
-                <Icon className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate">{item.label}</span>
+                <span className="flex items-center gap-2.5 min-w-0">
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span className="truncate">{item.label}</span>
+                </span>
+                {item.count !== null && (
+                  <span
+                    className={`text-xs font-mono tabular-nums shrink-0 ${
+                      active ? 'text-slate-300' : 'text-slate-400'
+                    }`}
+                  >
+                    {item.count}
+                  </span>
+                )}
               </button>
             );
           })}
+        </nav>
 
-          {/* Pannello Stampante Bluetooth BLE */}
-          <div className="pt-4 mt-4 border-t border-slate-200 px-1.5 space-y-2.5">
-            <div className="text-[11px] font-medium text-slate-500 px-1">
-              Stampante Bluetooth TiMini
-            </div>
+        {/* STATO STAMPANTE BLUETOOTH (sempre ben visibile) */}
+        <div className="px-4 py-4 border-t border-slate-100 flex-1 overflow-y-auto">
+          <div className="text-[11px] font-medium text-slate-400 mb-2.5">
+            Stato Stampante
+          </div>
 
-            {connection ? (
-              <div className="p-2.5 rounded-lg border border-emerald-200 bg-emerald-50/70 space-y-2">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-900">
-                  <BluetoothConnected className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-                  <span className="truncate">{connection.deviceName}</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={handleFeedPaper}
-                    disabled={isPrinting}
-                    className="flex-1 py-1.5 text-[11px] font-medium text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-md flex items-center justify-center gap-1 cursor-pointer"
-                  >
-                    <ChevronsDown className="w-3 h-3" />
-                    Avanza
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDisconnectBluetooth}
-                    disabled={isPrinting}
-                    className="px-2 py-1.5 text-[11px] font-medium text-rose-700 bg-white hover:bg-rose-50 border border-slate-200 rounded-md cursor-pointer"
-                  >
-                    Scollega
-                  </button>
+          {isConnected && connection ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3.5 space-y-3">
+              <div className="flex items-start gap-2.5">
+                <span className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                  <BluetoothConnected className="w-4 h-4" />
+                </span>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-800">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                    <span>Collegata</span>
+                  </div>
+                  <div className="text-xs font-mono font-semibold text-slate-900 truncate mt-0.5">
+                    {connection.deviceName}
+                  </div>
+                  {connectedAt && (
+                    <div className="text-[11px] text-emerald-700/80 tabular-nums mt-0.5">
+                      Attiva dalle {connectedAt}
+                    </div>
+                  )}
                 </div>
               </div>
-            ) : (
+
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={handlePrintTestSlip}
+                  disabled={isPrinting}
+                  className="py-1.5 px-2 text-xs font-medium text-emerald-900 bg-white hover:bg-emerald-100/70 border border-emerald-200 rounded-lg flex items-center justify-center gap-1 transition-colors disabled:opacity-50 cursor-pointer"
+                  title="Stampa una piccola ricevuta di verifica sulla TiMini"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Test
+                </button>
+                <button
+                  type="button"
+                  onClick={handleFeedPaper}
+                  disabled={isPrinting}
+                  className="py-1.5 px-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-center gap-1 transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  <ChevronsDown className="w-3.5 h-3.5" />
+                  Avanza
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleDisconnectBluetooth}
+                disabled={isPrinting}
+                className="w-full py-1.5 text-xs font-medium text-rose-700 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+              >
+                Scollega stampante
+              </button>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-3">
+              <div className="flex items-start gap-2.5">
+                <span className="w-8 h-8 rounded-lg bg-slate-200/80 text-slate-500 flex items-center justify-center shrink-0">
+                  <BluetoothOff className="w-4 h-4" />
+                </span>
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-slate-800">
+                    Non collegata
+                  </div>
+                  <div className="text-[11px] text-slate-500 leading-snug mt-0.5">
+                    Accendi la TiMini e premi Connetti per associarla.
+                  </div>
+                </div>
+              </div>
+
               <button
                 type="button"
                 onClick={handleConnectBluetooth}
                 disabled={isConnecting || !btSupported}
-                className="w-full py-2 px-3 text-xs font-medium text-white bg-blue-700 hover:bg-blue-800 rounded-lg flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                className="w-full py-2 px-3 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50 cursor-pointer"
               >
                 {isConnecting ? (
                   <>
                     <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    Ricerca BLE...
+                    Ricerca Bluetooth...
                   </>
                 ) : (
                   <>
@@ -513,52 +679,84 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
                   </>
                 )}
               </button>
-            )}
 
-            {!btSupported && (
-              <p className="text-[11px] text-slate-500 px-1 leading-snug">
-                Web Bluetooth non attivo in questo browser: usa Stampa Windows/USB o PNG 384px.
-              </p>
-            )}
+              {!btSupported && (
+                <p className="text-[11px] text-slate-500 leading-snug">
+                  Bluetooth non attivo in questo browser: usa Stampa Windows / USB oppure esporta
+                  PNG.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Esportazione file */}
+        <div className="px-4 py-3.5 border-t border-slate-100 space-y-1.5">
+          <div className="text-[11px] font-medium text-slate-400 mb-1">Esporta etichetta</div>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={handleDownloadPng}
+              className="px-2.5 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              PNG
+            </button>
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              className="px-2.5 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              PDF 57mm
+            </button>
           </div>
-        </nav>
-
-        <div className="p-3 border-t border-slate-200 space-y-1.5">
-          <button
-            type="button"
-            onClick={handleDownloadPng}
-            className="w-full px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer"
-          >
-            <Download className="w-3.5 h-3.5" />
-            PNG 384px (Tiny Print)
-          </button>
-          <button
-            type="button"
-            onClick={handleDownloadPdf}
-            className="w-full px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer"
-          >
-            <FileText className="w-3.5 h-3.5" />
-            Scarica PDF 57mm
-          </button>
         </div>
       </aside>
 
-      {/* Corpo Centrale + Pannello Destro */}
+      {/* AREA PRINCIPALE */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="h-14 shrink-0 bg-white border-b border-slate-200 px-6 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2 text-sm min-w-0">
-            <span className="text-slate-400">METATRON</span>
-            <span className="text-slate-300">/</span>
-            <span className="font-semibold text-slate-900 truncate">
-              TiMini Print — Stampante Etichette Termiche
-            </span>
+        {/* TOP BAR PULITA */}
+        <header className="h-14 shrink-0 bg-white border-b border-slate-200/90 px-6 flex items-center justify-between gap-6">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex items-center gap-2 text-sm min-w-0">
+              <span className="text-slate-400 whitespace-nowrap">METATRON</span>
+              <span className="text-slate-300">/</span>
+              <span className="font-semibold text-slate-900 truncate">TiMini Print</span>
+            </div>
+
+            <span className="h-4 w-px bg-slate-200 shrink-0" aria-hidden="true" />
+
+            {/* Indicatore testuale live connessione hardware */}
+            <div className="flex items-center gap-1.5 text-xs min-w-0">
+              {isConnected && connection ? (
+                <>
+                  <BluetoothConnected className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span className="font-medium text-emerald-700 whitespace-nowrap">Collegata</span>
+                  <span className="text-slate-300">·</span>
+                  <span className="font-mono text-slate-600 truncate max-w-[160px]">
+                    {connection.deviceName}
+                  </span>
+                </>
+              ) : isConnecting ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 text-blue-600 animate-spin shrink-0" />
+                  <span className="text-blue-700 whitespace-nowrap">Ricerca stampante...</span>
+                </>
+              ) : (
+                <>
+                  <BluetoothOff className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span className="text-slate-500 whitespace-nowrap">Non collegata</span>
+                </>
+              )}
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2.5 shrink-0">
             <button
               type="button"
               onClick={handlePrintSystem}
-              className="px-3.5 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+              className="px-3.5 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
               Stampa Windows / USB
@@ -566,43 +764,52 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
             <button
               type="button"
               disabled={isPrinting}
-              onClick={connection ? handlePrintBluetooth : handleConnectBluetooth}
-              className="px-3.5 py-2 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg flex items-center gap-1.5 whitespace-nowrap disabled:opacity-50 cursor-pointer"
+              onClick={isConnected ? handlePrintBluetooth : handleConnectBluetooth}
+              className={`px-4 py-2 text-xs font-medium text-white rounded-lg flex items-center gap-2 whitespace-nowrap shrink-0 transition-colors disabled:opacity-50 cursor-pointer ${
+                isConnected
+                  ? 'bg-slate-900 hover:bg-slate-800'
+                  : 'bg-blue-600 hover:bg-blue-700'
+              }`}
             >
               <Bluetooth className="w-3.5 h-3.5" />
               {isPrinting
                 ? 'Stampa in corso...'
-                : connection
+                : isConnected
                 ? `Stampa su TiMini (${copies}×)`
-                : 'Connetti & Stampa BLE'}
+                : 'Connetti & Stampa'}
             </button>
           </div>
         </header>
 
+        {/* Banner avvisi / errori */}
         {notice && (
           <div
-            className={`px-6 py-2 text-xs font-medium flex items-center justify-between ${
+            className={`px-6 py-2.5 text-xs font-medium flex items-center justify-between gap-4 ${
               notice.tone === 'error'
-                ? 'bg-rose-700 text-white'
+                ? 'bg-rose-600 text-white'
+                : notice.tone === 'success'
+                ? 'bg-emerald-700 text-white'
                 : 'bg-slate-900 text-white'
             }`}
           >
-            <span>{notice.text}</span>
+            <span className="leading-snug">{notice.text}</span>
             <button
               type="button"
               onClick={() => setNotice(null)}
-              className="opacity-75 hover:opacity-100 cursor-pointer"
+              className="opacity-80 hover:opacity-100 shrink-0 cursor-pointer"
+              aria-label="Chiudi avviso"
             >
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
         )}
 
+        {/* Barra avanzamento stampa Bluetooth */}
         {printProgress && (
           <div className="px-6 py-2.5 bg-blue-50 border-b border-blue-200 flex items-center gap-4">
-            <div className="flex-1 h-2 bg-blue-100 rounded-full overflow-hidden">
+            <div className="flex-1 h-1.5 bg-blue-200/80 rounded-full overflow-hidden">
               <div
-                className="h-full bg-blue-700 transition-all duration-150"
+                className="h-full bg-blue-600 transition-all duration-150"
                 style={{ width: `${printProgress.pct}%` }}
               />
             </div>
@@ -612,13 +819,13 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
           </div>
         )}
 
-        {/* Workspace */}
+        {/* WORKSPACE */}
         <div className="flex-1 flex min-h-0 overflow-hidden">
-          {/* Colonna Centrale: Tab attiva oppure Anteprima Termica Live */}
+          {/* COLONNA CENTRALE */}
           <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
             {activeTab === 'warehouse' ? (
               <div className="flex-1 flex flex-col min-h-0 bg-white">
-                <div className="px-5 py-3 border-b border-slate-200 bg-slate-50 flex items-center gap-3">
+                <div className="px-6 py-4 border-b border-slate-200/80 flex items-center justify-between gap-4">
                   <div className="relative flex-1 max-w-md">
                     <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
@@ -626,34 +833,43 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
                       value={warehouseSearch}
                       onChange={(e) => setWarehouseSearch(e.target.value)}
                       placeholder="Cerca articolo per SKU, nome, barcode o posizione..."
-                      className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg"
+                      className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400 transition-colors"
                     />
                   </div>
-                  <span className="text-xs text-slate-500 tabular-nums">
+                  <span className="text-xs text-slate-500 font-mono tabular-nums whitespace-nowrap">
                     {filteredWarehouseItems.length} articoli
                   </span>
                 </div>
                 <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
                   {filteredWarehouseItems.length === 0 ? (
-                    <div className="p-10 text-center text-xs text-slate-500">
-                      Nessun articolo presente in Magazzino.
+                    <div className="py-16 px-6 text-center space-y-2">
+                      <Package className="w-8 h-8 text-slate-300 mx-auto" />
+                      <div className="text-sm font-medium text-slate-700">
+                        Nessun articolo trovato in Magazzino
+                      </div>
+                      <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                        Aggiungi articoli nell’app Magazzino per generare le loro etichette barcode e
+                        QR in un clic.
+                      </p>
                     </div>
                   ) : (
                     filteredWarehouseItems.map((it) => (
                       <div
                         key={it.id}
-                        className="px-5 py-3 flex items-center justify-between gap-3 hover:bg-slate-50 text-xs"
+                        className="px-6 py-3.5 flex items-center justify-between gap-4 hover:bg-slate-50/80 transition-colors"
                       >
                         <div className="min-w-0">
-                          <div className="font-medium text-slate-900 truncate">{it.name}</div>
-                          <div className="text-[11px] font-mono text-slate-500 mt-0.5">
+                          <div className="text-sm font-medium text-slate-900 truncate">
+                            {it.name}
+                          </div>
+                          <div className="text-xs text-slate-500 mt-0.5 font-mono tabular-nums">
                             {it.sku} · Pos. {it.location || '—'} · Giac. {it.quantity} {it.unit}
                           </div>
                         </div>
                         <button
                           type="button"
                           onClick={() => loadFromWarehouseItem(it)}
-                          className="px-3 py-1.5 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg shrink-0 cursor-pointer"
+                          className="px-3.5 py-2 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg shrink-0 transition-colors cursor-pointer"
                         >
                           Carica etichetta
                         </button>
@@ -664,11 +880,11 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
               </div>
             ) : activeTab === 'commessa' ? (
               <div className="flex-1 flex flex-col min-h-0 bg-white">
-                <div className="px-5 py-3 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
+                <div className="px-6 py-4 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-3">
                   <select
                     value={selectedCommessa.id}
                     onChange={(e) => setSelectedCommessaId(e.target.value)}
-                    className="px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg font-medium text-slate-900"
+                    className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg font-medium text-slate-900 focus:bg-white focus:outline-none focus:border-slate-400"
                   >
                     {loads.map((ld) => (
                       <option key={ld.id} value={ld.id}>
@@ -697,21 +913,23 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
                       }));
                       setActiveTab('editor');
                     }}
-                    className="px-3 py-1.5 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg cursor-pointer"
+                    className="px-3.5 py-2 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                   >
                     Etichetta Commessa Intera
                   </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-5 space-y-5 text-xs">
+                <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
                   <div>
-                    <div className="text-[11px] font-medium text-slate-500 mb-2">
-                      Bancali ({selectedCommessa.pallets.length})
+                    <div className="text-xs font-semibold text-slate-500 mb-2.5 tabular-nums">
+                      Bancali · {selectedCommessa.pallets.length}
                     </div>
                     {selectedCommessa.pallets.length === 0 ? (
-                      <div className="text-slate-400">Nessun bancale in questa commessa.</div>
+                      <div className="text-xs text-slate-400 py-3">
+                        Nessun bancale in questa commessa.
+                      </div>
                     ) : (
-                      <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden">
+                      <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
                         {selectedCommessa.pallets.map((p) => {
                           const pSum = commessaSummary.palletSummaries.find(
                             (ps) => ps.pallet.id === p.id
@@ -719,13 +937,13 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
                           return (
                             <div
                               key={p.id}
-                              className="px-4 py-2.5 flex items-center justify-between gap-2 bg-white hover:bg-slate-50"
+                              className="px-4 py-3 flex items-center justify-between gap-3 bg-white hover:bg-slate-50 transition-colors"
                             >
                               <div className="min-w-0">
-                                <div className="font-mono font-semibold text-slate-900">
+                                <div className="text-xs font-mono font-semibold text-slate-900">
                                   {p.code} · {p.label}
                                 </div>
-                                <div className="text-[11px] text-slate-500">
+                                <div className="text-xs text-slate-500 tabular-nums mt-0.5">
                                   {p.dimensionsCm} · Peso{' '}
                                   {(pSum?.grossWeightKg ?? p.tareKg).toFixed(1)} kg
                                 </div>
@@ -751,7 +969,7 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
                                   }));
                                   setActiveTab('editor');
                                 }}
-                                className="px-3 py-1 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md cursor-pointer"
+                                className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
                               >
                                 Carica
                               </button>
@@ -763,23 +981,25 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
                   </div>
 
                   <div>
-                    <div className="text-[11px] font-medium text-slate-500 mb-2">
-                      Scatole ({selectedCommessa.boxes.length})
+                    <div className="text-xs font-semibold text-slate-500 mb-2.5 tabular-nums">
+                      Scatole · {selectedCommessa.boxes.length}
                     </div>
                     {selectedCommessa.boxes.length === 0 ? (
-                      <div className="text-slate-400">Nessuna scatola in questa commessa.</div>
+                      <div className="text-xs text-slate-400 py-3">
+                        Nessuna scatola in questa commessa.
+                      </div>
                     ) : (
-                      <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden">
+                      <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
                         {selectedCommessa.boxes.map((b) => (
                           <div
                             key={b.id}
-                            className="px-4 py-2.5 flex items-center justify-between gap-2 bg-white hover:bg-slate-50"
+                            className="px-4 py-3 flex items-center justify-between gap-3 bg-white hover:bg-slate-50 transition-colors"
                           >
                             <div className="min-w-0">
-                              <div className="font-mono font-semibold text-slate-900">
+                              <div className="text-xs font-mono font-semibold text-slate-900">
                                 {b.code} · {b.label}
                               </div>
-                              <div className="text-[11px] text-slate-500">
+                              <div className="text-xs text-slate-500 mt-0.5">
                                 {b.dimensionsCm} {b.fragile ? '· FRAGILE' : ''}
                               </div>
                             </div>
@@ -806,7 +1026,7 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
                                 }));
                                 setActiveTab('editor');
                               }}
-                              className="px-3 py-1 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md cursor-pointer"
+                              className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
                             >
                               Carica
                             </button>
@@ -819,57 +1039,65 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
               </div>
             ) : activeTab === 'templates' ? (
               <div className="flex-1 flex flex-col min-h-0 bg-white">
-                <div className="px-5 py-3 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
+                <div className="px-6 py-4 border-b border-slate-200/80 flex items-center gap-2.5">
                   <input
                     type="text"
                     value={templateNameInput}
                     onChange={(e) => setTemplateNameInput(e.target.value)}
-                    placeholder="Nome per salvare l'etichetta attuale come modello..."
-                    className="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg"
+                    placeholder="Nome del modello per salvare l’etichetta attuale..."
+                    className="flex-1 px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400"
                   />
                   <button
                     type="button"
                     onClick={handleSaveTemplate}
-                    className="px-3.5 py-1.5 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg whitespace-nowrap cursor-pointer"
+                    className="px-4 py-2 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg whitespace-nowrap transition-colors cursor-pointer"
                   >
-                    Salva modello attuale
+                    Salva modello
                   </button>
                 </div>
                 <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
                   {templates.length === 0 ? (
-                    <div className="p-10 text-center text-xs text-slate-500">
-                      Nessun modello salvato. Configura un’etichetta e salvala qui per riutilizzarla
-                      in un clic.
+                    <div className="py-16 px-6 text-center space-y-2">
+                      <Bookmark className="w-8 h-8 text-slate-300 mx-auto" />
+                      <div className="text-sm font-medium text-slate-700">
+                        Nessun modello salvato
+                      </div>
+                      <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                        Personalizza la tua etichetta e salvala qui per riutilizzarla in un clic.
+                      </p>
                     </div>
                   ) : (
                     templates.map((tpl) => (
                       <div
                         key={tpl.id}
-                        className="px-5 py-3 flex items-center justify-between gap-3 hover:bg-slate-50 text-xs"
+                        className="px-6 py-3.5 flex items-center justify-between gap-4 hover:bg-slate-50/80 transition-colors"
                       >
                         <div className="min-w-0">
-                          <div className="font-semibold text-slate-900 truncate">{tpl.name}</div>
-                          <div className="text-[11px] text-slate-500 truncate">
+                          <div className="text-sm font-medium text-slate-900 truncate">
+                            {tpl.name}
+                          </div>
+                          <div className="text-xs text-slate-500 truncate mt-0.5">
                             {tpl.title} · {tpl.codeText || 'Senza codice'}
                           </div>
                         </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="flex items-center gap-2 shrink-0">
                           <button
                             type="button"
                             onClick={() => {
                               setDesign({ ...tpl });
                               setActiveTab('editor');
                             }}
-                            className="px-3 py-1 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-md cursor-pointer"
+                            className="px-3.5 py-1.5 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                           >
                             Apri
                           </button>
                           <button
                             type="button"
                             onClick={() => handleDeleteTemplate(tpl.id)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 cursor-pointer"
+                            className="p-2 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
+                            aria-label="Elimina modello"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </div>
@@ -878,338 +1106,550 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
                 </div>
               </div>
             ) : (
-              /* ANTEPRIMA TERMICA LIVE 384px (1-bit monocromatica fedele alla carta termica) */
-              <div className="flex-1 overflow-y-auto p-6 flex flex-col items-center justify-start bg-slate-100">
-                <div className="w-full max-w-md flex items-center justify-between text-xs text-slate-500 mb-3 font-mono tabular-nums">
-                  <span>Anteprima Carta Termica 57mm</span>
-                  <span>
-                    {previewDims.w}×{previewDims.h} px · 57×{previewDims.mmH} mm
-                  </span>
+              /* STUDIO ANTEPRIMA CARTA TERMICA 57mm */
+              <div
+                className="flex-1 flex flex-col min-h-0 overflow-hidden"
+                style={{
+                  backgroundColor: '#EEF1F5',
+                  backgroundImage:
+                    'radial-gradient(rgba(15, 23, 42, 0.08) 1px, transparent 1px)',
+                  backgroundSize: '18px 18px',
+                }}
+              >
+                {/* Barra info dimensioni, copie & zoom */}
+                <div className="px-6 py-3 bg-white/80 backdrop-blur-xs border-b border-slate-200/80 flex items-center justify-between gap-4">
+                  <div className="text-xs text-slate-600 font-mono tabular-nums">
+                    57 × {previewDims.mmH} mm · {previewDims.w} × {previewDims.h} px · 200 DPI
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    {/* Copie rapide */}
+                    <div className="flex items-center gap-2 text-xs text-slate-600">
+                      <span>Copie</span>
+                      <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setCopies((c) => Math.max(1, c - 1))}
+                          className="w-6 h-6 flex items-center justify-center rounded-md text-slate-600 hover:bg-white hover:text-slate-900 transition-colors cursor-pointer"
+                          aria-label="Riduci copie"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="w-7 text-center font-mono font-semibold text-slate-900 tabular-nums">
+                          {copies}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setCopies((c) => Math.min(20, c + 1))}
+                          className="w-6 h-6 flex items-center justify-center rounded-md text-slate-600 hover:bg-white hover:text-slate-900 transition-colors cursor-pointer"
+                          aria-label="Aumenta copie"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Zoom anteprima */}
+                    <div className="flex items-center bg-slate-100 rounded-lg p-0.5 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewZoom('100')}
+                        className={`px-2.5 py-1 rounded-md font-medium tabular-nums transition-colors cursor-pointer ${
+                          previewZoom === '100'
+                            ? 'bg-white text-slate-900 shadow-2xs'
+                            : 'text-slate-500 hover:text-slate-900'
+                        }`}
+                      >
+                        100%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPreviewZoom('125')}
+                        className={`px-2.5 py-1 rounded-md font-medium tabular-nums transition-colors cursor-pointer ${
+                          previewZoom === '125'
+                            ? 'bg-white text-slate-900 shadow-2xs'
+                            : 'text-slate-500 hover:text-slate-900'
+                        }`}
+                      >
+                        125%
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Simulazione rotolo carta termica */}
-                <div className="bg-white border border-slate-300 shadow-md px-5 py-4 rounded-sm">
-                  <canvas
-                    ref={previewCanvasRef}
-                    className="block w-[288px] h-auto border border-dashed border-slate-200"
-                    style={{ imageRendering: 'pixelated' }}
-                  />
-                </div>
+                {/* Foglio rotolo termico centrato */}
+                <div className="flex-1 overflow-y-auto px-6 py-8 flex flex-col items-center justify-start">
+                  <div
+                    className="transition-transform duration-150"
+                    style={{
+                      filter: 'drop-shadow(0 18px 30px rgba(15, 23, 42, 0.14))',
+                    }}
+                  >
+                    <ThermalTearEdge />
+                    <div className="bg-white px-5 py-4">
+                      <canvas
+                        ref={previewCanvasRef}
+                        className={`block h-auto transition-all duration-150 ${
+                          previewZoom === '125' ? 'w-[340px]' : 'w-[288px]'
+                        }`}
+                        style={{ imageRendering: 'pixelated' }}
+                      />
+                    </div>
+                    <ThermalTearEdge flip />
+                  </div>
 
-                <div className="mt-4 text-[11px] text-slate-500 text-center max-w-sm">
-                  Anteprima reale in bianco e nero a 1 bit (200 DPI). Quello che vedi qui è
-                  esattamente ciò che viene inviato alla testina termica TiMini.
+                  <p className="mt-6 text-xs text-slate-500 text-center max-w-sm leading-relaxed">
+                    Anteprima reale in bianco e nero 1-bit: la stampante termica TiMini inciderà
+                    esattamente questi pixel sulla carta da 57 mm.
+                  </p>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Pannello Destro: Contenuto Etichetta & Impostazioni Stampante */}
-          <aside className="w-[380px] shrink-0 border-l border-slate-200 bg-white overflow-y-auto px-5 py-4 space-y-5 text-xs">
-            <div className="space-y-3">
-              <div className="text-[11px] font-semibold text-slate-500">Contenuto Etichetta</div>
-
-              <div>
-                <label className="block font-medium text-slate-700 mb-1">
-                  Intestazione / Reparto
-                </label>
-                <input
-                  type="text"
-                  value={design.headerTag}
-                  onChange={(e) => setDesign({ ...design, headerTag: e.target.value })}
-                  placeholder="METATRON MAGAZZINO"
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400"
-                />
-              </div>
-
-              <div>
-                <label className="block font-medium text-slate-700 mb-1">Titolo principale</label>
-                <input
-                  type="text"
-                  value={design.title}
-                  onChange={(e) => setDesign({ ...design, title: e.target.value })}
-                  placeholder="Nome articolo, cliente o collo"
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400"
-                />
-              </div>
-
-              <div>
-                <label className="block font-medium text-slate-700 mb-1">
-                  Sottotitolo / Dettagli
-                </label>
-                <input
-                  type="text"
-                  value={design.subtitle}
-                  onChange={(e) => setDesign({ ...design, subtitle: e.target.value })}
-                  placeholder="Posizione, peso, note..."
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Codice / SKU</label>
-                  <input
-                    type="text"
-                    value={design.codeText}
-                    onChange={(e) =>
-                      setDesign({
-                        ...design,
-                        codeText: e.target.value,
-                        barcodeContent:
-                          design.barcodeContent === design.codeText
-                            ? e.target.value
-                            : design.barcodeContent,
-                        qrContent:
-                          design.qrContent === design.codeText
-                            ? e.target.value
-                            : design.qrContent,
-                      })
-                    }
-                    className="w-full px-2.5 py-1.5 font-mono bg-slate-50 border border-slate-200 rounded-lg focus:bg-white"
-                  />
-                </div>
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Piè di pagina</label>
-                  <input
-                    type="text"
-                    value={design.footerText}
-                    onChange={(e) => setDesign({ ...design, footerText: e.target.value })}
-                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Barcode, QR & Immagine */}
-            <div className="border-t border-slate-100 pt-4 space-y-3">
-              <div className="text-[11px] font-semibold text-slate-500">
-                Codici & Immagine / Logo
-              </div>
-
-              <div className="space-y-2">
-                <label className="flex items-center justify-between gap-2 cursor-pointer">
-                  <span className="flex items-center gap-1.5 font-medium text-slate-700">
-                    <Barcode className="w-3.5 h-3.5 text-slate-500" />
-                    Stampa Codice a Barre 1D (Code39)
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={design.includeBarcode}
-                    onChange={(e) => setDesign({ ...design, includeBarcode: e.target.checked })}
-                  />
-                </label>
-                {design.includeBarcode && (
-                  <input
-                    type="text"
-                    value={design.barcodeContent}
-                    onChange={(e) => setDesign({ ...design, barcodeContent: e.target.value })}
-                    placeholder="Testo codice a barre"
-                    className="w-full px-2.5 py-1.5 font-mono bg-slate-50 border border-slate-200 rounded-lg"
-                  />
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <label className="flex items-center justify-between gap-2 cursor-pointer">
-                  <span className="flex items-center gap-1.5 font-medium text-slate-700">
-                    <QrCode className="w-3.5 h-3.5 text-slate-500" />
-                    Stampa QR Code
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={design.includeQr}
-                    onChange={(e) => setDesign({ ...design, includeQr: e.target.checked })}
-                  />
-                </label>
-                {design.includeQr && (
-                  <input
-                    type="text"
-                    value={design.qrContent}
-                    onChange={(e) => setDesign({ ...design, qrContent: e.target.value })}
-                    placeholder="Contenuto QR (SKU, URL, commessa...)"
-                    className="w-full px-2.5 py-1.5 font-mono bg-slate-50 border border-slate-200 rounded-lg"
-                  />
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 pt-1">
-                <label className="flex-1 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer">
-                  <Upload className="w-3.5 h-3.5" />
-                  {design.imageDataUrl ? 'Cambia Immagine / Logo' : 'Carica Logo o Foto'}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    className="hidden"
-                  />
-                </label>
-                {design.imageDataUrl && (
+          {/* PANNELLO ISPETTORE DESTRO (organizzato in 3 tab pulite) */}
+          <aside className="w-[368px] shrink-0 border-l border-slate-200/90 bg-white flex flex-col overflow-hidden">
+            {/* Segmented Control Tabs */}
+            <div className="px-5 pt-4 pb-3 border-b border-slate-100">
+              <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-lg">
+                {(
+                  [
+                    { id: 'content', label: 'Contenuto' },
+                    { id: 'codes', label: 'Codici & Logo' },
+                    { id: 'printer', label: 'Stampante' },
+                  ] as const
+                ).map((tab) => (
                   <button
+                    key={tab.id}
                     type="button"
-                    onClick={() => setDesign({ ...design, imageDataUrl: undefined })}
-                    className="p-1.5 text-rose-700 hover:bg-rose-50 border border-slate-200 rounded-lg cursor-pointer"
-                    title="Rimuovi immagine"
+                    onClick={() => setInspectorTab(tab.id)}
+                    className={`py-1.5 px-2 text-xs font-medium rounded-md whitespace-nowrap transition-colors cursor-pointer ${
+                      inspectorTab === tab.id
+                        ? 'bg-white text-slate-900 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    {tab.label}
                   </button>
-                )}
+                ))}
               </div>
             </div>
 
-            {/* Layout & Qualità Termica */}
-            <div className="border-t border-slate-100 pt-4 space-y-3">
-              <div className="text-[11px] font-semibold text-slate-500">
-                Stile & Parametri Stampante TiMini
-              </div>
+            {/* Corpo Ispettore */}
+            <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5 text-xs">
+              {inspectorTab === 'content' && (
+                <>
+                  {/* Preset rapidi */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-medium text-slate-400">
+                        Modelli rapidi
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setDesign(createDefaultDesign(currentUser.company))}
+                        className="text-[11px] text-slate-500 hover:text-slate-900 flex items-center gap-1 cursor-pointer"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        Ripristina
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => applyQuickPreset('stock')}
+                        className="py-1.5 px-2 text-xs font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+                      >
+                        Articolo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => applyQuickPreset('pallet')}
+                        className="py-1.5 px-2 text-xs font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+                      >
+                        Bancale
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => applyQuickPreset('shipping')}
+                        className="py-1.5 px-2 text-xs font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+                      >
+                        Fragile
+                      </button>
+                    </div>
+                  </div>
 
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Stile bordo</label>
-                  <select
-                    value={design.borderStyle}
-                    onChange={(e) =>
-                      setDesign({ ...design, borderStyle: e.target.value as LabelBorderStyle })
-                    }
-                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg"
-                  >
-                    <option value="header_banner">Testata Nera</option>
-                    <option value="frame">Cornice</option>
-                    <option value="none">Senza bordo</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Altezza etichetta</label>
-                  <select
-                    value={design.heightPreset}
-                    onChange={(e) =>
-                      setDesign({ ...design, heightPreset: e.target.value as LabelHeightPreset })
-                    }
-                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg"
-                  >
-                    <option value="auto">Automatica</option>
-                    <option value="30mm">57 × 30 mm</option>
-                    <option value="40mm">57 × 40 mm</option>
-                    <option value="50mm">57 × 50 mm</option>
-                    <option value="75mm">57 × 75 mm</option>
-                  </select>
-                </div>
-              </div>
+                  {/* Campi Testo */}
+                  <div className="space-y-3.5 pt-2 border-t border-slate-100">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Intestazione / Reparto
+                      </label>
+                      <input
+                        type="text"
+                        value={design.headerTag}
+                        onChange={(e) => setDesign({ ...design, headerTag: e.target.value })}
+                        placeholder="METATRON MAGAZZINO"
+                        className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400 transition-colors"
+                      />
+                    </div>
 
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Copie</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={20}
-                    value={copies}
-                    onChange={(e) =>
-                      setCopies(Math.max(1, Math.min(20, Number(e.target.value) || 1)))
-                    }
-                    className="w-full px-2.5 py-1.5 font-mono bg-slate-50 border border-slate-200 rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Intensità</label>
-                  <select
-                    value={darkness}
-                    onChange={(e) => setDarkness(e.target.value as ThermalDarknessLevel)}
-                    className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg"
-                  >
-                    <option value="light">Chiaro</option>
-                    <option value="medium">Medio</option>
-                    <option value="dark">Scuro</option>
-                    <option value="ultra">Extra Scuro</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Testo</label>
-                  <select
-                    value={design.fontScale}
-                    onChange={(e) =>
-                      setDesign({
-                        ...design,
-                        fontScale: e.target.value as 'compact' | 'normal' | 'large',
-                      })
-                    }
-                    className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg"
-                  >
-                    <option value="compact">Compatto</option>
-                    <option value="normal">Normale</option>
-                    <option value="large">Grande</option>
-                  </select>
-                </div>
-              </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Titolo principale
+                      </label>
+                      <input
+                        type="text"
+                        value={design.title}
+                        onChange={(e) => setDesign({ ...design, title: e.target.value })}
+                        placeholder="Nome articolo, cliente o collo"
+                        className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400 transition-colors"
+                      />
+                    </div>
 
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Binarizzazione</label>
-                  <select
-                    value={design.ditherMode}
-                    onChange={(e) =>
-                      setDesign({ ...design, ditherMode: e.target.value as ThermalDitherMode })
-                    }
-                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg"
-                  >
-                    <option value="threshold">Nitida (Testo / QR)</option>
-                    <option value="floyd_steinberg">Retino (Foto / Loghi)</option>
-                  </select>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Sottotitolo / Dettagli
+                      </label>
+                      <input
+                        type="text"
+                        value={design.subtitle}
+                        onChange={(e) => setDesign({ ...design, subtitle: e.target.value })}
+                        placeholder="Posizione, peso, note..."
+                        className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400 transition-colors"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                          Codice / SKU
+                        </label>
+                        <input
+                          type="text"
+                          value={design.codeText}
+                          onChange={(e) =>
+                            setDesign({
+                              ...design,
+                              codeText: e.target.value,
+                              barcodeContent:
+                                design.barcodeContent === design.codeText
+                                  ? e.target.value
+                                  : design.barcodeContent,
+                              qrContent:
+                                design.qrContent === design.codeText
+                                  ? e.target.value
+                                  : design.qrContent,
+                            })
+                          }
+                          className="w-full px-3 py-2 text-xs font-mono bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400 transition-colors"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                          Piè di pagina
+                        </label>
+                        <input
+                          type="text"
+                          value={design.footerText}
+                          onChange={(e) => setDesign({ ...design, footerText: e.target.value })}
+                          className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400 transition-colors"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Stile rapido */}
+                  <div className="space-y-3 pt-3 border-t border-slate-100">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Stile cornice
+                      </label>
+                      <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-lg">
+                        {(
+                          [
+                            { id: 'header_banner', label: 'Testata' },
+                            { id: 'frame', label: 'Cornice' },
+                            { id: 'none', label: 'Pulita' },
+                          ] as const
+                        ).map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() =>
+                              setDesign({ ...design, borderStyle: opt.id as LabelBorderStyle })
+                            }
+                            className={`py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                              design.borderStyle === opt.id
+                                ? 'bg-white text-slate-900 shadow-2xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Dimensione testo
+                      </label>
+                      <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-lg">
+                        {(
+                          [
+                            { id: 'compact', label: 'Compatto' },
+                            { id: 'normal', label: 'Normale' },
+                            { id: 'large', label: 'Grande' },
+                          ] as const
+                        ).map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setDesign({ ...design, fontScale: opt.id })}
+                            className={`py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                              design.fontScale === opt.id
+                                ? 'bg-white text-slate-900 shadow-2xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {inspectorTab === 'codes' && (
+                <div className="space-y-5">
+                  {/* Barcode 1D */}
+                  <div className="space-y-2.5">
+                    <label className="flex items-center justify-between gap-2 cursor-pointer">
+                      <span className="flex items-center gap-2 font-medium text-slate-800">
+                        <Barcode className="w-4 h-4 text-slate-500" />
+                        Codice a Barre 1D (Code39)
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={design.includeBarcode}
+                        onChange={(e) =>
+                          setDesign({ ...design, includeBarcode: e.target.checked })
+                        }
+                        className="w-4 h-4 accent-slate-900 cursor-pointer"
+                      />
+                    </label>
+                    {design.includeBarcode && (
+                      <input
+                        type="text"
+                        value={design.barcodeContent}
+                        onChange={(e) =>
+                          setDesign({ ...design, barcodeContent: e.target.value })
+                        }
+                        placeholder="Testo codice a barre (es. SKU-001)"
+                        className="w-full px-3 py-2 text-xs font-mono bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400"
+                      />
+                    )}
+                  </div>
+
+                  {/* QR Code */}
+                  <div className="space-y-2.5 pt-4 border-t border-slate-100">
+                    <label className="flex items-center justify-between gap-2 cursor-pointer">
+                      <span className="flex items-center gap-2 font-medium text-slate-800">
+                        <QrCode className="w-4 h-4 text-slate-500" />
+                        QR Code scansionabile
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={design.includeQr}
+                        onChange={(e) => setDesign({ ...design, includeQr: e.target.checked })}
+                        className="w-4 h-4 accent-slate-900 cursor-pointer"
+                      />
+                    </label>
+                    {design.includeQr && (
+                      <input
+                        type="text"
+                        value={design.qrContent}
+                        onChange={(e) => setDesign({ ...design, qrContent: e.target.value })}
+                        placeholder="Contenuto QR (SKU, URL, commessa...)"
+                        className="w-full px-3 py-2 text-xs font-mono bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400"
+                      />
+                    )}
+                  </div>
+
+                  {/* Logo / Foto */}
+                  <div className="space-y-2.5 pt-4 border-t border-slate-100">
+                    <div className="font-medium text-slate-800">Logo aziendale o foto</div>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      L’immagine viene convertita automaticamente in retino termico 1-bit per la
+                      testina da 384 px.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <label className="flex-1 px-3 py-2.5 text-xs font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 border border-dashed border-slate-300 rounded-lg flex items-center justify-center gap-2 transition-colors cursor-pointer">
+                        <Upload className="w-4 h-4 text-slate-500" />
+                        {design.imageDataUrl ? 'Sostituisci immagine' : 'Carica logo o immagine'}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          className="hidden"
+                        />
+                      </label>
+                      {design.imageDataUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setDesign({ ...design, imageDataUrl: undefined })}
+                          className="p-2.5 text-rose-600 hover:bg-rose-50 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+                          title="Rimuovi immagine"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">
-                    Avanza carta (passi)
+              )}
+
+              {inspectorTab === 'printer' && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                      Intensità stampa termica
+                    </label>
+                    <div className="grid grid-cols-4 gap-1 p-1 bg-slate-100 rounded-lg">
+                      {(
+                        [
+                          { id: 'light', label: 'Chiaro' },
+                          { id: 'medium', label: 'Medio' },
+                          { id: 'dark', label: 'Scuro' },
+                          { id: 'ultra', label: 'Extra' },
+                        ] as const
+                      ).map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => setDarkness(opt.id)}
+                          className={`py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                            darkness === opt.id
+                              ? 'bg-white text-slate-900 shadow-2xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Altezza carta
+                      </label>
+                      <select
+                        value={design.heightPreset}
+                        onChange={(e) =>
+                          setDesign({
+                            ...design,
+                            heightPreset: e.target.value as LabelHeightPreset,
+                          })
+                        }
+                        className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400"
+                      >
+                        <option value="auto">Automatica</option>
+                        <option value="30mm">57 × 30 mm</option>
+                        <option value="40mm">57 × 40 mm</option>
+                        <option value="50mm">57 × 50 mm</option>
+                        <option value="75mm">57 × 75 mm</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Binarizzazione
+                      </label>
+                      <select
+                        value={design.ditherMode}
+                        onChange={(e) =>
+                          setDesign({
+                            ...design,
+                            ditherMode: e.target.value as ThermalDitherMode,
+                          })
+                        }
+                        className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400"
+                      >
+                        <option value="threshold">Nitida (Testo/QR)</option>
+                        <option value="floyd_steinberg">Retino (Foto)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="pt-1">
+                    <div className="flex justify-between text-xs text-slate-600 mb-1.5">
+                      <span>Contrasto / Soglia nero</span>
+                      <span className="font-mono font-medium text-slate-900 tabular-nums">
+                        {design.threshold}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={80}
+                      max={220}
+                      value={design.threshold}
+                      onChange={(e) => setDesign({ ...design, threshold: Number(e.target.value) })}
+                      className="w-full accent-slate-900 cursor-pointer"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Avanza carta (passi)
+                      </label>
+                      <input
+                        type="number"
+                        min={16}
+                        max={200}
+                        value={feedAfterSteps}
+                        onChange={(e) =>
+                          setFeedAfterSteps(
+                            Math.max(16, Math.min(200, Number(e.target.value) || 64))
+                          )
+                        }
+                        className="w-full px-3 py-2 text-xs font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Pacchetto BLE
+                      </label>
+                      <select
+                        value={chunkSize}
+                        onChange={(e) => setChunkSize(Number(e.target.value))}
+                        className="w-full px-3 py-2 text-xs font-mono bg-slate-50 border border-slate-200 rounded-lg"
+                      >
+                        <option value={20}>20 B (sicuro)</option>
+                        <option value={80}>80 B (standard)</option>
+                        <option value={120}>120 B (rapido)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <label className="flex items-center justify-between pt-2 border-t border-slate-100 cursor-pointer">
+                    <span className="text-xs text-slate-700">
+                      Specchio orizzontale (alcuni modelli)
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(design.mirrorHorizontal)}
+                      onChange={(e) =>
+                        setDesign({ ...design, mirrorHorizontal: e.target.checked })
+                      }
+                      className="w-4 h-4 accent-slate-900 cursor-pointer"
+                    />
                   </label>
-                  <input
-                    type="number"
-                    min={16}
-                    max={200}
-                    value={feedAfterSteps}
-                    onChange={(e) =>
-                      setFeedAfterSteps(Math.max(16, Math.min(200, Number(e.target.value) || 64)))
-                    }
-                    className="w-full px-2.5 py-1.5 font-mono bg-slate-50 border border-slate-200 rounded-lg"
-                  />
                 </div>
-              </div>
-
-              <div>
-                <div className="flex justify-between text-[11px] text-slate-500 mb-1">
-                  <span>Contrasto / Soglia nero</span>
-                  <span className="font-mono tabular-nums">{design.threshold}</span>
-                </div>
-                <input
-                  type="range"
-                  min={80}
-                  max={220}
-                  value={design.threshold}
-                  onChange={(e) => setDesign({ ...design, threshold: Number(e.target.value) })}
-                  className="w-full"
-                />
-              </div>
-
-              <div className="flex items-center justify-between pt-1">
-                <label className="flex items-center gap-2 text-slate-600 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(design.mirrorHorizontal)}
-                    onChange={(e) =>
-                      setDesign({ ...design, mirrorHorizontal: e.target.checked })
-                    }
-                  />
-                  <span>Inverti orizzontale (alcuni modelli)</span>
-                </label>
-                <select
-                  value={chunkSize}
-                  onChange={(e) => setChunkSize(Number(e.target.value))}
-                  title="Dimensione pacchetto BLE"
-                  className="px-2 py-1 text-[11px] font-mono bg-slate-50 border border-slate-200 rounded"
-                >
-                  <option value={20}>BLE 20B (sicuro)</option>
-                  <option value={80}>BLE 80B (rapido)</option>
-                  <option value={120}>BLE 120B (veloce)</option>
-                </select>
-              </div>
+              )}
             </div>
           </aside>
         </div>
@@ -1218,25 +1658,29 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
       {/* MODALE SELETTORE DISPOSITIVI BLUETOOTH (Electron Desktop Windows) */}
       {electronBtDevices !== null && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between">
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                <Bluetooth className="w-4 h-4 text-blue-700" />
-                Seleziona Stampante TiMini Bluetooth
+                <Bluetooth className="w-4 h-4 text-blue-600" />
+                Seleziona Stampante TiMini
               </div>
               <button
                 type="button"
                 onClick={handleCancelElectronBt}
                 className="p-1 text-slate-400 hover:text-slate-900 cursor-pointer"
+                aria-label="Chiudi"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="p-4 max-h-72 overflow-y-auto space-y-1.5 text-xs">
+            <div className="p-4 max-h-72 overflow-y-auto space-y-2 text-xs">
               {electronBtDevices.length === 0 ? (
-                <div className="py-8 text-center text-slate-500">
-                  Ricerca stampanti Bluetooth nelle vicinanze... Assicurati che la stampante TiMini
-                  sia accesa.
+                <div className="py-10 text-center space-y-2 text-slate-500">
+                  <RefreshCw className="w-5 h-5 animate-spin text-blue-600 mx-auto" />
+                  <p>Ricerca dispositivi Bluetooth nelle vicinanze...</p>
+                  <p className="text-[11px] text-slate-400">
+                    Assicurati che la stampante TiMini sia accesa e non collegata al telefono.
+                  </p>
                 </div>
               ) : (
                 electronBtDevices.map((dev) => (
@@ -1244,26 +1688,26 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
                     key={dev.deviceId}
                     type="button"
                     onClick={() => handleSelectElectronBtDevice(dev.deviceId)}
-                    className="w-full px-3.5 py-2.5 text-left rounded-lg border border-slate-200 hover:border-blue-600 hover:bg-blue-50/60 flex items-center justify-between gap-2 cursor-pointer"
+                    className="w-full px-4 py-3 text-left rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/50 flex items-center justify-between gap-3 transition-colors cursor-pointer"
                   >
                     <div className="min-w-0">
-                      <div className="font-semibold text-slate-900 truncate">
+                      <div className="text-sm font-semibold text-slate-900 truncate">
                         {dev.deviceName}
                       </div>
-                      <div className="text-[11px] font-mono text-slate-400 truncate">
+                      <div className="text-[11px] font-mono text-slate-400 truncate mt-0.5">
                         {dev.deviceId}
                       </div>
                     </div>
-                    <span className="text-blue-700 font-medium shrink-0">Connetti</span>
+                    <span className="text-xs font-medium text-blue-600 shrink-0">Connetti</span>
                   </button>
                 ))
               )}
             </div>
-            <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex justify-end">
+            <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 flex justify-end">
               <button
                 type="button"
                 onClick={handleCancelElectronBt}
-                className="px-3.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 cursor-pointer"
+                className="px-4 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 cursor-pointer"
               >
                 Annulla
               </button>

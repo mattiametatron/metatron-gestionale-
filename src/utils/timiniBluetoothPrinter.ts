@@ -248,6 +248,10 @@ async function writeBleBytes(
   }
 }
 
+export function isTiMiniConnected(conn: TiMiniConnection | null): boolean {
+  return Boolean(conn && conn.device?.gatt?.connected);
+}
+
 export async function feedTiMiniPaper(
   conn: TiMiniConnection,
   steps = 48
@@ -255,6 +259,59 @@ export async function feedTiMiniPaper(
   const clamped = Math.max(8, Math.min(255, Math.round(steps)));
   const pkt = buildPacket(0xa1, [clamped & 0xff, (clamped >> 8) & 0xff]);
   await writeBleBytes(conn.writeChar, pkt, 60, 10);
+}
+
+/**
+ * Stampa una piccola ricevuta di verifica connessione (~24mm) per confermare
+ * fisicamente che la stampante TiMini riceve e stampa correttamente.
+ */
+export async function printTiMiniTestSlip(
+  conn: TiMiniConnection,
+  darkness: ThermalDarknessLevel = 'dark',
+  chunkSize = 80
+): Promise<void> {
+  const canvas = document.createElement('canvas');
+  canvas.width = TIMINI_PRINT_WIDTH_PX;
+  canvas.height = 176;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, canvas.width, 36);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '700 16px "Plus Jakarta Sans", Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('METATRON · TEST STAMPA OK', canvas.width / 2, 18);
+
+  ctx.fillStyle = '#000000';
+  ctx.textBaseline = 'top';
+  ctx.font = '700 20px "Plus Jakarta Sans", Arial, sans-serif';
+  ctx.fillText('STAMPANTE COLLEGATA', canvas.width / 2, 50);
+
+  ctx.font = '700 15px "JetBrains Mono", Consolas, monospace';
+  ctx.fillText((conn.deviceName || 'TiMini BLE').slice(0, 28), canvas.width / 2, 82);
+
+  ctx.fillRect(24, 112, canvas.width - 48, 2);
+
+  ctx.font = '700 14px "Plus Jakarta Sans", Arial, sans-serif';
+  const nowStr = new Date().toLocaleString('it-IT', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  ctx.fillText(`${nowStr} · 384px · 200 DPI`, canvas.width / 2, 126);
+
+  const { rows } = binarizeThermalCanvas(canvas, 'threshold', 165, false);
+  await printRowsToTiMini(conn, rows, {
+    darkness,
+    feedAfterSteps: 56,
+    copies: 1,
+    chunkSize,
+  });
 }
 
 /**
@@ -667,11 +724,11 @@ export async function renderTiMiniLabelCanvas(
   // Barcode 1D Code39
   const barcodeVal = (design.barcodeContent || design.codeText).trim();
   if (design.includeBarcode && barcodeVal) {
-    drawCode39Barcode(ctx, barcodeVal, pad + 4, y, contentW - 8, 44);
-    y += 48;
-    ctx.font = '700 12px "JetBrains Mono", Consolas, monospace';
+    drawCode39Barcode(ctx, barcodeVal, pad + 4, y, contentW - 8, 46);
+    y += 51;
+    ctx.font = '800 14px "JetBrains Mono", Consolas, monospace';
     ctx.fillText(barcodeVal.toUpperCase(), width / 2, y);
-    y += 18;
+    y += 22;
   }
 
   // QR Code scansionabile
@@ -679,15 +736,15 @@ export async function renderTiMiniLabelCanvas(
   if (design.includeQr && qrVal) {
     try {
       const qrDataUrl = await QRCode.toDataURL(qrVal, {
-        width: 124,
+        width: 128,
         margin: 1,
         errorCorrectionLevel: 'M',
         color: { dark: '#000000', light: '#ffffff' },
       });
       const qrImg = await loadImage(qrDataUrl);
       if (qrImg) {
-        ctx.drawImage(qrImg, Math.round((width - 124) / 2), y, 124, 124);
-        y += 130;
+        ctx.drawImage(qrImg, Math.round((width - 128) / 2), y, 128, 128);
+        y += 136;
       }
     } catch {
       // ignore QR error
@@ -697,10 +754,10 @@ export async function renderTiMiniLabelCanvas(
   // Footer
   if (design.footerText.trim()) {
     ctx.fillStyle = '#000000';
-    ctx.fillRect(pad, y, contentW, 1);
-    y += 6;
-    ctx.font = '600 12px "Plus Jakarta Sans", Arial, sans-serif';
-    ctx.fillText(design.footerText.trim().slice(0, 44), width / 2, y);
+    ctx.fillRect(pad, y, contentW, 2);
+    y += 8;
+    ctx.font = '700 14px "Plus Jakarta Sans", Arial, sans-serif';
+    ctx.fillText(design.footerText.trim().slice(0, 42), width / 2, y);
   }
 
   return canvas;
