@@ -95,6 +95,16 @@ import {
   TrackEntityType,
 } from './utils/qrTrackingUtils';
 import {
+  AuditFixAction,
+  autoBalanceTruckSlotsForLoad,
+  autoPackAndBalanceLoad,
+  buildZeroClickCommessaFromFile,
+  classifyItemLocally,
+  learnItemPattern,
+  ParsedImportedItem,
+  ZeroClickCommessaResult,
+} from './utils/localAutoEngine';
+import {
   getPackingListPdfBlobUrl,
   openPdfBlobInNewTab,
 } from './utils/pdfGenerator';
@@ -1563,12 +1573,24 @@ export default function App() {
       photoDataUrl?: string;
     }
   ) => {
-    updateActiveLoad((load) => ({
-      ...load,
-      items: load.items.map((item) =>
-        item.id === itemId ? { ...item, ...updates } : item
-      ),
-    }));
+    updateActiveLoad((load) => {
+      const target = load.items.find((i) => i.id === itemId);
+      if (target) {
+        learnItemPattern({
+          sku: updates.sku || target.sku,
+          name: updates.name || target.name,
+          category: target.category,
+          unitWeightKg: updates.unitWeightKg ?? target.unitWeightKg,
+          fragile: updates.fragile ?? target.fragile,
+        });
+      }
+      return {
+        ...load,
+        items: load.items.map((item) =>
+          item.id === itemId ? { ...item, ...updates } : item
+        ),
+      };
+    });
   };
 
   const handleDuplicateItem = (itemId: string) => {
@@ -1780,6 +1802,7 @@ export default function App() {
     newName: string
   ) => {
     const targetSkuUpper = sku.trim().toUpperCase();
+    learnItemPattern({ sku, name: newName });
     setLoads((prevLoads) => {
       const nextLoads = prevLoads.map((ld) => {
         if (ld.id !== loadId) return ld;
@@ -2429,66 +2452,94 @@ export default function App() {
     showToast('Cartello lavorazione duplicato');
   };
 
-  // --- Auto-Distribute Unassigned Checklist Items into Boxes & Pallets ---
+  // --- Auto-Distribute & Smart FFD Imballaggio Scatole, Bancali & Camion ---
   const handleAutoDistributeItems = () => {
+    let summaryMsg = 'Bancali e camion bilanciati automaticamente';
     updateActiveLoad((load) => {
-      const currentPallets = [...load.pallets];
-      const currentBoxes = [...load.boxes];
-
-      if (currentPallets.length === 0) {
-        const spec = PALLET_SPECS.EPAL_80x120;
-        currentPallets.push({
-          id: `pal-${Date.now()}`,
-          code: 'BANC-01',
-          label: 'Bancale Principale',
-          palletType: 'EPAL_80x120',
-          dimensionsCm: spec.dimensionsCm,
-          heightCm: 140,
-          tareKg: spec.tareKg,
-          maxWeightKg: spec.defaultMaxKg,
-          wrapped: false,
-          truckSlot: 1,
-          notes: '',
-        });
+      const res = autoPackAndBalanceLoad(load);
+      if (res.assignedItems > 0) {
+        summaryMsg = `Preparati ${res.assignedItems} articoli (${res.createdBoxes} nuove scatole, ${res.createdPallets} nuovi bancali) e camion bilanciato`;
       }
+      return res.nextLoad;
+    });
+    showToast(summaryMsg);
+  };
 
-      if (currentBoxes.length === 0) {
-        const spec = BOX_SPECS.M_60x40x40;
-        currentBoxes.push({
-          id: `box-${Date.now()}`,
-          code: 'SC-01',
-          label: 'Scatola 01',
-          boxType: 'M_60x40x40',
-          dimensionsCm: spec.dimensionsCm,
-          tareKg: spec.tareKg,
-          maxWeightKg: spec.defaultMaxKg,
-          palletId: currentPallets[0].id,
-          parentBoxId: null,
-          sealed: false,
-          fragile: false,
-          stackLevel: 1,
-        });
-      }
+  const handleAutoBalanceTruck = () => {
+    updateActiveLoad((load) => autoBalanceTruckSlotsForLoad(load));
+    showToast('Bancali distribuiti e bilanciati SX/DX sul camion');
+  };
 
-      let boxIndex = 0;
-      const updatedItems = load.items.map((item) => {
-        if (item.palletId || item.boxId) return item;
-        const targetBox = currentBoxes[boxIndex % currentBoxes.length];
-        boxIndex += 1;
-        return {
-          ...item,
-          boxId: targetBox.id,
-          palletId: targetBox.palletId || currentPallets[0].id,
-        };
-      });
+  const handleImportParsedItems = (
+    parsedItems: ParsedImportedItem[],
+    meta?: { client?: string; destination?: string }
+  ) => {
+    const now = Date.now();
+    updateActiveLoad((load) => {
+      const created: ChecklistItem[] = parsedItems.map((it, idx) => ({
+        id: `itm-auto-${now}-${idx}-${Math.random().toString(36).slice(2, 5)}`,
+        sku: it.sku || `IMP-${String(load.items.length + idx + 1).padStart(3, '0')}`,
+        name: it.name,
+        category: it.category || 'Generale',
+        quantity: Math.max(1, it.quantity || 1),
+        unitWeightKg: Math.max(0.05, it.unitWeightKg || 0.5),
+        checked: false,
+        fragile: Boolean(it.fragile),
+        palletId: null,
+        boxId: null,
+        notes: it.notes || '',
+      }));
 
       return {
         ...load,
-        pallets: currentPallets,
-        boxes: currentBoxes,
-        items: updatedItems,
+        client:
+          meta?.client && (!load.client || load.client.trim() === '')
+            ? meta.client
+            : load.client,
+        destination:
+          meta?.destination && (!load.destination || load.destination.trim() === '')
+            ? meta.destination
+            : load.destination,
+        items: [...load.items, ...created],
       };
     });
+    showToast(`Importati ${parsedItems.length} articoli dal documento`);
+  };
+
+  const handleRunAuditFix = (action: AuditFixAction) => {
+    if (action === 'auto_pack') {
+      handleAutoDistributeItems();
+      return;
+    }
+    if (action === 'balance_truck') {
+      handleAutoBalanceTruck();
+      return;
+    }
+    if (action === 'fix_fragile_levels') {
+      updateActiveLoad((load) => ({
+        ...load,
+        boxes: load.boxes.map((b) => {
+          const hasFragileItem =
+            b.fragile || load.items.some((i) => i.boxId === b.id && i.fragile);
+          return hasFragileItem
+            ? { ...b, fragile: true, stackLevel: 3 as const }
+            : b;
+        }),
+      }));
+      showToast('Scatole fragili spostate al livello superiore di protezione');
+      return;
+    }
+    if (action === 'fill_missing_weights') {
+      updateActiveLoad((load) => ({
+        ...load,
+        items: load.items.map((it) => {
+          if (it.unitWeightKg && it.unitWeightKg > 0) return it;
+          const meta = classifyItemLocally(it.name, it.sku, inventory.categories || []);
+          return { ...it, unitWeightKg: meta.estimatedWeightKg };
+        }),
+      }));
+      showToast('Pesi unitari mancanti stimati automaticamente');
+    }
   };
 
   const handleClearCurrentLoad = () => {
@@ -2813,6 +2864,30 @@ export default function App() {
     showToast(`Nuova commessa creata: ${newLoad.code} — ${newLoad.title}`);
   };
 
+  // --- Nuova Commessa Zero-Click da file trascinato sul Desktop (PDF / Excel / Foto) ---
+  const handleZeroClickFileDrop = async (
+    file: File,
+    onProgress: (pct: number, label: string) => void
+  ): Promise<ZeroClickCommessaResult> => {
+    const result = await buildZeroClickCommessaFromFile(
+      file,
+      loads,
+      inventory,
+      crmContacts,
+      onProgress
+    );
+    setLoads((prev) => {
+      const nextLoads = [result.load, ...prev];
+      broadcastLoads(nextLoads);
+      return nextLoads;
+    });
+    setActiveLoadId(result.load.id);
+    showToast(
+      `Commessa ${result.load.code} pronta: ${result.itemsCount} articoli, ${result.boxesCount} scatole, ${result.palletsCount} bancali`
+    );
+    return result;
+  };
+
   const handleImportJSONBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -2893,6 +2968,10 @@ export default function App() {
             onDeleteItem={handleDeleteItem}
             onMarkAllChecked={handleMarkAllChecked}
             onAutoDistributeItems={handleAutoDistributeItems}
+            onImportParsedItems={handleImportParsedItems}
+            onRunAuditFix={handleRunAuditFix}
+            userCategories={inventory.categories || []}
+            allLoads={loads}
             onOpenKitModal={() => {
               setKitDefaultPalletId(activeLoad.pallets[0]?.id || null);
               setShowKitModal(true);
@@ -2995,8 +3074,11 @@ export default function App() {
             inventory={inventory}
             loads={loads}
             activeLoad={activeLoad}
+            purchaseOrders={purchaseOrders}
+            contacts={crmContacts}
             currentUser={authUser}
             onUpdateInventory={handleUpdateInventory}
+            onOpenPurchaseOrders={() => openApp('purchase_orders')}
             onDispatchTrackingRecord={handleDispatchTrackingRecord}
           />
         ) : null;
@@ -3115,6 +3197,7 @@ export default function App() {
           <PurchaseOrdersApp
             orders={purchaseOrders}
             inventory={inventory}
+            loads={loads}
             contacts={crmContacts}
             currentUser={authUser}
             initialSupplierId={poInitialSupplierId}
@@ -3195,6 +3278,7 @@ export default function App() {
             onAssignPalletSlot={handleAssignPalletSlot}
             onTogglePalletWrapped={handleTogglePalletWrapped}
             onUpdateVehicleSpecs={handleUpdateVehicleSpecs}
+            onAutoBalanceTruck={handleAutoBalanceTruck}
           />
         );
       case 'signatures':
@@ -3303,6 +3387,7 @@ export default function App() {
         onMarkNotificationRead={handleMarkNotificationRead}
         onMarkAllNotificationsRead={handleMarkAllNotificationsRead}
         onDismissNotification={handleDismissNotification}
+        onZeroClickFileDrop={handleZeroClickFileDrop}
         renderAppContent={renderSynologyAppContent}
       />
 

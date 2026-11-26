@@ -23,6 +23,7 @@ import {
   Pencil,
   Clock,
   ChevronRight,
+  QrCode,
 } from 'lucide-react';
 import {
   AuthUser,
@@ -44,6 +45,9 @@ import {
   createUniversalBarcodeReader,
   decodeBarcodeFromVideoFrame,
 } from '../utils/barcodeDecoder';
+import { classifyItemLocally, learnItemPattern } from '../utils/localAutoEngine';
+import { parseQrCommand } from '../utils/qrCommandSheet';
+import { QrCommandSheetModal } from './QrCommandSheetModal';
 
 export type ScannerOperationMode = 'pack' | 'truck' | 'unload';
 
@@ -190,6 +194,7 @@ export const PalletTruckScannerApp: React.FC<PalletTruckScannerAppProps> = ({
   // Quick rename state for auto-created catalog items (qty 0)
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingItemName, setEditingItemName] = useState<string>('');
+  const [qrSheetOpen, setQrSheetOpen] = useState<boolean>(false);
 
   // Camera scanner state
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -268,6 +273,55 @@ export const PalletTruckScannerApp: React.FC<PalletTruckScannerAppProps> = ({
       const nowIso = new Date().toISOString();
       const upper = cleaned.toUpperCase();
       const compact = upper.replace(/[^A-Z0-9]/g, '');
+
+      // 0. Comandi QR Rapidi da Banco (MTCARICO, MTSCARICO, MTQ*, MTA*, MTANNULLA)
+      const qrCmd = parseQrCommand(cleaned);
+      if (qrCmd) {
+        if (qrCmd.kind === 'mode') {
+          setMode(qrCmd.mode === 'carico' ? 'pack' : 'unload');
+          if (soundEnabled) playBeep('ok');
+          setLastFeedback({
+            kind: 'ok',
+            title:
+              qrCmd.mode === 'carico'
+                ? 'Modalità: Carica su Bancale / Scatola'
+                : 'Modalità: Scarico Uscita & Distinta',
+            detail: 'Comando QR banco applicato senza toccare il PC.',
+          });
+        } else if (qrCmd.kind === 'set_qty') {
+          setScanQty(qrCmd.qty);
+          if (soundEnabled) playBeep('ok');
+          setLastFeedback({
+            kind: 'ok',
+            title: `Quantità per scansione impostata a ×${qrCmd.qty}`,
+            detail: 'Le prossime scansioni caricheranno questa quantità.',
+          });
+        } else if (qrCmd.kind === 'add_qty') {
+          setScanQty((q) => q + qrCmd.delta);
+          if (soundEnabled) playBeep('ok');
+          setLastFeedback({
+            kind: 'ok',
+            title: `Quantità aumentata di +${qrCmd.delta}`,
+            detail: 'Pronto alla prossima scansione.',
+          });
+        } else if (qrCmd.kind === 'cancel') {
+          setScanQty(1);
+          if (soundEnabled) playBeep('warn');
+          setLastFeedback({
+            kind: 'warning',
+            title: 'Moltiplicatore riportato a ×1',
+            detail: 'Pronto per una nuova scansione.',
+          });
+        } else if (qrCmd.kind === 'confirm') {
+          if (soundEnabled) playBeep('ok');
+          setLastFeedback({
+            kind: 'ok',
+            title: 'Confermato',
+            detail: 'Tutte le scansioni su bancale sono già salvate in tempo reale.',
+          });
+        }
+        return;
+      }
 
       // ================================================================
       // MODALITÀ 1: CARICA SU BANCALE / SCATOLA (+ AUTO-CREA ARTICOLO A 0)
@@ -358,8 +412,16 @@ export const PalletTruckScannerApp: React.FC<PalletTruckScannerAppProps> = ({
             (li) => li.sku.trim().toUpperCase() === upper
           );
           resolvedSku = loadItemHint?.sku || upper;
-          resolvedName = loadItemHint?.name || `Articolo ${resolvedSku}`;
-          resolvedCategory = loadItemHint?.category || '';
+          const inferredMeta = classifyItemLocally(
+            loadItemHint?.name || '',
+            resolvedSku,
+            inventory.categories || []
+          );
+          resolvedName =
+            loadItemHint?.name ||
+            inferredMeta.learnedName ||
+            `Articolo ${resolvedSku}`;
+          resolvedCategory = loadItemHint?.category || inferredMeta.category;
 
           const newItemId = `stk-auto-${Date.now()}-${Math.random()
             .toString(36)
@@ -372,11 +434,14 @@ export const PalletTruckScannerApp: React.FC<PalletTruckScannerAppProps> = ({
             barcode: cleaned,
             name: resolvedName,
             category: resolvedCategory,
-            unit: 'pz',
+            unit: inferredMeta.unit || 'pz',
             quantity: 0,
             minStock: 0,
-            location: 'Da classificare',
-            notes: `Creato automaticamente con q.tà 0 da Scanner Bancale/Camion (Commessa ${activeLoad.code})`,
+            location: inferredMeta.location || 'Da classificare',
+            supplier: inferredMeta.learnedSupplier || undefined,
+            notes: inferredMeta.fromMemory
+              ? `Riconosciuto dalla memoria locale (q.tà 0) da Scanner Bancale · ${activeLoad.code}`
+              : `Creato e classificato automaticamente (q.tà 0) da Scanner Bancale/Camion · ${activeLoad.code}`,
             updatedAt: nowIso,
           };
 
@@ -744,11 +809,53 @@ export const PalletTruckScannerApp: React.FC<PalletTruckScannerAppProps> = ({
       return;
     }
     const nowIso = new Date().toISOString();
+    const targetItem = inventory.items.find(
+      (it) => it.id === logEntry.inventoryItemId
+    );
+    const inferred = classifyItemLocally(
+      trimmed,
+      logEntry.sku,
+      inventory.categories || []
+    );
+
+    const nextCategory =
+      !targetItem?.category ||
+      targetItem.category.toLowerCase() === 'generale'
+        ? inferred.category
+        : targetItem.category;
+    const nextLocation =
+      !targetItem?.location ||
+      ['da classificare', 'magazzino', 'magazzino generale'].includes(
+        targetItem.location.toLowerCase()
+      )
+        ? inferred.location
+        : targetItem.location;
+    const nextSupplier = targetItem?.supplier || inferred.learnedSupplier;
+
+    // Salva nella Memoria Adattiva Locale: la prossima volta che passa questo barcode lo sa già!
+    learnItemPattern({
+      sku: targetItem?.sku || logEntry.sku,
+      barcode: targetItem?.barcode || logEntry.rawCode,
+      name: trimmed,
+      category: nextCategory,
+      unit: targetItem?.unit || inferred.unit,
+      location: nextLocation,
+      supplier: nextSupplier,
+      fragile: inferred.fragile,
+    });
+
     onUpdateInventory({
       ...inventory,
       items: inventory.items.map((it) =>
         it.id === logEntry.inventoryItemId
-          ? { ...it, name: trimmed, updatedAt: nowIso }
+          ? {
+              ...it,
+              name: trimmed,
+              category: nextCategory,
+              location: nextLocation,
+              supplier: nextSupplier,
+              updatedAt: nowIso,
+            }
           : it
       ),
     });
@@ -870,6 +977,16 @@ export const PalletTruckScannerApp: React.FC<PalletTruckScannerAppProps> = ({
               </option>
             ))}
           </select>
+
+          <button
+            type="button"
+            onClick={() => setQrSheetOpen(true)}
+            className="h-9 px-3 rounded-lg bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-950 text-xs font-semibold flex items-center gap-1.5 cursor-pointer whitespace-nowrap transition-colors"
+            title="Stampa la Plancia QR Comandi Rapidi da Banco"
+          >
+            <QrCode className="w-3.5 h-3.5 text-amber-800" />
+            <span>Plancia QR</span>
+          </button>
 
           <button
             type="button"
@@ -1700,6 +1817,11 @@ export const PalletTruckScannerApp: React.FC<PalletTruckScannerAppProps> = ({
           </section>
         </div>
       </div>
+
+      <QrCommandSheetModal
+        isOpen={qrSheetOpen}
+        onClose={() => setQrSheetOpen(false)}
+      />
     </div>
   );
 };

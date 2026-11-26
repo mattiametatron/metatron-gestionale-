@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import {
   AuthUser,
+  CargoLoad,
   CrmContact,
   PurchaseOrder,
   PurchaseOrderItem,
@@ -24,10 +25,15 @@ import {
   WarehouseStockItem,
 } from '../types/warehouse';
 import { downloadCsvFile, generatePurchaseOrderPdf } from '../utils/businessPdfGenerator';
+import {
+  computePredictiveStockForecast,
+  PredictiveStockAlert,
+} from '../utils/localAutoEngine';
 
 interface PurchaseOrdersAppProps {
   orders: PurchaseOrder[];
   inventory: WarehouseInventoryState;
+  loads?: CargoLoad[];
   contacts: CrmContact[];
   currentUser: AuthUser;
   initialSupplierId?: string | null;
@@ -79,6 +85,7 @@ function getSuggestedReorderQty(item: WarehouseStockItem): number {
 export const PurchaseOrdersApp: React.FC<PurchaseOrdersAppProps> = ({
   orders,
   inventory,
+  loads = [],
   contacts,
   currentUser,
   initialSupplierId,
@@ -116,12 +123,26 @@ export const PurchaseOrdersApp: React.FC<PurchaseOrdersAppProps> = ({
     [contacts]
   );
 
-  // Articoli sotto scorta minima dal Magazzino
+  // Previsione predittiva + articoli sotto scorta minima dal Magazzino
+  const predictiveAlerts = useMemo(
+    () => computePredictiveStockForecast(inventory, loads, orders, contacts),
+    [inventory, loads, orders, contacts]
+  );
+
+  const predictiveAlertByItemId = useMemo(() => {
+    const map = new Map<string, PredictiveStockAlert>();
+    predictiveAlerts.forEach((a) => map.set(a.item.id, a));
+    return map;
+  }, [predictiveAlerts]);
+
   const lowStockItems = useMemo(() => {
-    return inventory.items
-      .filter((it) => it.quantity <= it.minStock)
-      .sort((a, b) => a.quantity - a.minStock - (b.quantity - b.minStock));
-  }, [inventory.items]);
+    return predictiveAlerts.map((a) => a.item);
+  }, [predictiveAlerts]);
+
+  const proactiveOnlyCount = useMemo(
+    () => predictiveAlerts.filter((a) => !a.isAlreadyLowStock).length,
+    [predictiveAlerts]
+  );
 
   // Verifica se un articolo ha già un ordine aperto (bozza/inviato/confermato/parziale)
   const openOrderedBySku = useMemo(() => {
@@ -278,7 +299,10 @@ export const PurchaseOrdersApp: React.FC<PurchaseOrdersAppProps> = ({
         unit: invItem.unit || 'pz',
         currentStockAtOrder: invItem.quantity,
         minStockAtOrder: invItem.minStock,
-        orderedQty: customReorderQty[invItem.id] ?? getSuggestedReorderQty(invItem),
+        orderedQty:
+          customReorderQty[invItem.id] ??
+          predictiveAlertByItemId.get(invItem.id)?.recommendedOrderQty ??
+          getSuggestedReorderQty(invItem),
         receivedQty: 0,
         unitCostEur: 0,
       }));
@@ -788,9 +812,19 @@ export const PurchaseOrdersApp: React.FC<PurchaseOrdersAppProps> = ({
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <div className="px-6 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
               <div className="text-xs text-slate-600">
-                Articoli di <strong className="text-slate-900">Magazzino</strong> con giacenza
-                inferiore o uguale alla scorta minima. Seleziona e genera gli ordini raggruppati
-                per fornitore.
+                <strong className="text-slate-900">Riordino predittivo &amp; sotto scorta:</strong>{' '}
+                include gli articoli sotto soglia minima
+                {proactiveOnlyCount > 0 ? (
+                  <>
+                    {' '}e{' '}
+                    <strong className="text-amber-800">
+                      {proactiveOnlyCount} in esaurimento previsto
+                    </strong>{' '}
+                    in base a consumi recenti e commesse aperte.
+                  </>
+                ) : (
+                  ' e calcola automaticamente i quantitativi in base a consumi e commesse aperte.'
+                )}
               </div>
               {lowStockItems.length > 0 && (
                 <div className="flex items-center gap-2 shrink-0">
@@ -826,7 +860,7 @@ export const PurchaseOrdersApp: React.FC<PurchaseOrdersAppProps> = ({
                     <ShoppingCart className="w-3.5 h-3.5" />
                     {selectedLowStockList.length > 0
                       ? `Genera ordini (${selectedLowStockList.length} art.)`
-                      : `Riordina tutto (${lowStockItems.length} art.)`}
+                      : `Prepara Ordini Predittivi (${lowStockItems.length} art.)`}
                   </button>
                 </div>
               )}
@@ -871,8 +905,11 @@ export const PurchaseOrdersApp: React.FC<PurchaseOrdersAppProps> = ({
                   <tbody className="divide-y divide-slate-100 text-xs">
                     {lowStockItems.map((it) => {
                       const checked = Boolean(selectedReorderIds[it.id]);
+                      const forecast = predictiveAlertByItemId.get(it.id);
                       const suggested =
-                        customReorderQty[it.id] ?? getSuggestedReorderQty(it);
+                        customReorderQty[it.id] ??
+                        forecast?.recommendedOrderQty ??
+                        getSuggestedReorderQty(it);
                       const alreadyPending =
                         openOrderedBySku.get(it.id) ||
                         openOrderedBySku.get(it.sku.toUpperCase()) ||
@@ -900,6 +937,17 @@ export const PurchaseOrdersApp: React.FC<PurchaseOrdersAppProps> = ({
                             <div className="text-[11px] text-slate-400">
                               {it.category} · Pos. {it.location || '—'}
                             </div>
+                            {forecast && (
+                              <div
+                                className={`text-[11px] font-medium mt-0.5 ${
+                                  forecast.urgency === 'critico'
+                                    ? 'text-rose-700'
+                                    : 'text-amber-700'
+                                }`}
+                              >
+                                {forecast.reason}
+                              </div>
+                            )}
                           </td>
                           <td className="py-2.5 px-3 text-slate-700">
                             {it.supplier || (
@@ -907,7 +955,15 @@ export const PurchaseOrdersApp: React.FC<PurchaseOrdersAppProps> = ({
                             )}
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono tabular-nums whitespace-nowrap">
-                            <span className="text-rose-700 font-semibold">{it.quantity}</span>
+                            <span
+                              className={`font-semibold ${
+                                it.quantity <= it.minStock
+                                  ? 'text-rose-700'
+                                  : 'text-amber-700'
+                              }`}
+                            >
+                              {it.quantity}
+                            </span>
                             <span className="text-slate-400"> / {it.minStock} {it.unit}</span>
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono tabular-nums whitespace-nowrap">

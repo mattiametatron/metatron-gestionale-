@@ -17,6 +17,7 @@ interface TruckLoadPlannerProps {
     vehicleMaxPallets: number;
     departureDate: string;
   }) => void;
+  onAutoBalanceTruck?: () => void;
 }
 
 export const TruckLoadPlanner: React.FC<TruckLoadPlannerProps> = ({
@@ -25,6 +26,7 @@ export const TruckLoadPlanner: React.FC<TruckLoadPlannerProps> = ({
   onAssignPalletSlot,
   onTogglePalletWrapped,
   onUpdateVehicleSpecs,
+  onAutoBalanceTruck,
 }) => {
   const totalSlots = Math.max(4, Math.min(34, load.vehicleMaxPallets));
   const slots = Array.from({ length: totalSlots }, (_, idx) => idx + 1);
@@ -256,6 +258,17 @@ export const TruckLoadPlanner: React.FC<TruckLoadPlannerProps> = ({
               </strong>
             </div>
           </div>
+
+          {onAutoBalanceTruck && load.pallets.length > 0 && (
+            <button
+              type="button"
+              onClick={onAutoBalanceTruck}
+              className="w-full py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer transition-colors"
+            >
+              <Scale className="w-3.5 h-3.5 text-amber-400" />
+              <span>Bilancia Bancali sul Camion Automaticamente</span>
+            </button>
+          )}
         </div>
       </div>
 

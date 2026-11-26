@@ -16,12 +16,27 @@ import {
   CopyPlus,
   Camera,
   Image as ImageIcon,
+  ScanLine,
+  Upload,
+  Loader2,
+  ShieldCheck,
+  AlertTriangle,
+  CheckCircle2,
 } from 'lucide-react';
 import { CargoLoad, ChecklistItem } from '../types/warehouse';
 import {
   LoadSummary,
   compressImageFileToDataUrl,
 } from '../utils/calculations';
+import {
+  auditCargoLoad,
+  AuditFixAction,
+  findForgottenItemsForLoad,
+  ForgottenItemSuggestion,
+  LocalDocumentParseResult,
+  parseDocumentLocally,
+  ParsedImportedItem,
+} from '../utils/localAutoEngine';
 
 interface ChecklistWorkspaceProps {
   load: CargoLoad;
@@ -51,6 +66,13 @@ interface ChecklistWorkspaceProps {
   onMarkAllChecked: (checked: boolean) => void;
   onAutoDistributeItems: () => void;
   onOpenKitModal: () => void;
+  onImportParsedItems?: (
+    items: ParsedImportedItem[],
+    meta?: { client?: string; destination?: string }
+  ) => void;
+  onRunAuditFix?: (action: AuditFixAction) => void;
+  userCategories?: string[];
+  allLoads?: CargoLoad[];
 }
 
 export const ChecklistWorkspace: React.FC<ChecklistWorkspaceProps> = ({
@@ -67,6 +89,10 @@ export const ChecklistWorkspace: React.FC<ChecklistWorkspaceProps> = ({
   onMarkAllChecked,
   onAutoDistributeItems,
   onOpenKitModal,
+  onImportParsedItems,
+  onRunAuditFix,
+  userCategories = [],
+  allLoads = [],
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<
@@ -138,6 +164,106 @@ export const ChecklistWorkspace: React.FC<ChecklistWorkspaceProps> = ({
   // Bulk Paste Modal State
   const [showBulkPasteModal, setShowBulkPasteModal] = useState(false);
   const [bulkText, setBulkText] = useState('');
+
+  // Smart Local Document Import (PDF / Foto OCR / Excel) — 100% senza API
+  const [showSmartImportModal, setShowSmartImportModal] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importProgressPct, setImportProgressPct] = useState(0);
+  const [importProgressLabel, setImportProgressLabel] = useState('');
+  const [importError, setImportError] = useState<string | null>(null);
+  const [parsedDoc, setParsedDoc] = useState<LocalDocumentParseResult | null>(null);
+  const [selectedImportRows, setSelectedImportRows] = useState<Record<number, boolean>>({});
+  const [applyDetectedHeader, setApplyDetectedHeader] = useState(true);
+
+  const [dismissedSuggestions, setDismissedSuggestions] = useState<Record<string, boolean>>({});
+  const auditIssues = useMemo(() => auditCargoLoad(load, summary), [load, summary]);
+  const forgottenSuggestions = useMemo(
+    () =>
+      findForgottenItemsForLoad(load, allLoads, 4).filter(
+        (s) => !dismissedSuggestions[`${load.id}:${s.signatureKey}`]
+      ),
+    [load, allLoads, dismissedSuggestions]
+  );
+
+  const handleAcceptForgottenItem = (s: ForgottenItemSuggestion) => {
+    onAddItem({
+      sku: s.sku,
+      name: s.name,
+      category: s.category,
+      quantity: s.typicalQty,
+      unitWeightKg: s.unitWeightKg,
+      checked: false,
+      fragile: s.fragile,
+      palletId: null,
+      boxId: null,
+      notes: 'Suggerito da storico commesse simili',
+    });
+  };
+
+  const handleSmartDocFile = async (file: File) => {
+    setImportError(null);
+    setParsedDoc(null);
+    setImportBusy(true);
+    setImportProgressPct(8);
+    setImportProgressLabel('Lettura file in locale...');
+    try {
+      const result = await parseDocumentLocally(file, userCategories, (pct, lbl) => {
+        setImportProgressPct(pct);
+        setImportProgressLabel(lbl);
+      });
+      if (result.items.length === 0) {
+        setImportError(
+          'Nessuna riga articolo riconosciuta nel documento. Prova con una foto più nitida o un PDF/Excel tabellare.'
+        );
+      } else {
+        setParsedDoc(result);
+        const sel: Record<number, boolean> = {};
+        result.items.forEach((_, i) => {
+          sel[i] = true;
+        });
+        setSelectedImportRows(sel);
+      }
+    } catch {
+      setImportError('Errore durante la lettura locale del file.');
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  const handleConfirmSmartImport = () => {
+    if (!parsedDoc) return;
+    const chosen = parsedDoc.items.filter((_, idx) => selectedImportRows[idx]);
+    if (chosen.length === 0) return;
+
+    if (onImportParsedItems) {
+      onImportParsedItems(
+        chosen,
+        applyDetectedHeader
+          ? {
+              client: parsedDoc.detectedClient,
+              destination: parsedDoc.detectedDestination,
+            }
+          : undefined
+      );
+    } else {
+      chosen.forEach((it) =>
+        onAddItem({
+          sku: it.sku,
+          name: it.name,
+          category: it.category,
+          quantity: it.quantity,
+          unitWeightKg: it.unitWeightKg,
+          checked: false,
+          fragile: it.fragile,
+          palletId: null,
+          boxId: null,
+          notes: it.notes,
+        })
+      );
+    }
+    setShowSmartImportModal(false);
+    setParsedDoc(null);
+  };
 
   const handleNewItemPhotoUpload = async (
     e: React.ChangeEvent<HTMLInputElement>
@@ -247,7 +373,21 @@ export const ChecklistWorkspace: React.FC<ChecklistWorkspaceProps> = ({
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setImportError(null);
+                setParsedDoc(null);
+                setShowSmartImportModal(true);
+              }}
+              className="px-3 py-1 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 border border-amber-500/70 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+              title="Legge automaticamente PDF, Foto di liste/bolle o Excel in locale senza API"
+            >
+              <ScanLine className="w-3.5 h-3.5" />
+              Importa PDF / Foto / Bolla
+            </button>
+
             <button
               type="button"
               onClick={onOpenKitModal}
@@ -267,6 +407,140 @@ export const ChecklistWorkspace: React.FC<ChecklistWorkspaceProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Controllo Errori Silenzioso in tempo reale */}
+        {load.items.length > 0 && auditIssues.length > 0 && (
+          <div className="rounded-xl bg-amber-50/85 border border-amber-200/90 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2 min-w-0 text-amber-950">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              <span className="font-semibold shrink-0">
+                Verifica automatica ({auditIssues.length}):
+              </span>
+              <span className="truncate text-amber-900">
+                {auditIssues[0].title}
+                {auditIssues.length > 1 ? ` (+${auditIssues.length - 1} altri)` : ''}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+              {auditIssues
+                .filter((iss) => iss.fixAction && iss.fixLabel)
+                .slice(0, 3)
+                .map((iss) => (
+                  <button
+                    key={iss.id}
+                    type="button"
+                    onClick={() => {
+                      if (!iss.fixAction) return;
+                      if (onRunAuditFix) {
+                        onRunAuditFix(iss.fixAction);
+                      } else if (iss.fixAction === 'auto_pack') {
+                        onAutoDistributeItems();
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-semibold cursor-pointer transition-colors"
+                  >
+                    {iss.fixLabel}
+                  </button>
+                ))}
+            </div>
+          </div>
+        )}
+        {load.items.length > 0 && auditIssues.length === 0 && (
+          <div className="rounded-xl bg-emerald-50/75 border border-emerald-200/80 px-3 py-1.5 flex items-center gap-2 text-[11.5px] text-emerald-900">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span className="font-medium">
+              Verifica automatica completata: nessun sovraccarico, imballaggio e camion conformi.
+            </span>
+          </div>
+        )}
+
+        {/* Antidimenticanza silenzioso basato sulle commesse passate */}
+        {forgottenSuggestions.length > 0 && (
+          <div className="rounded-xl bg-sky-50/80 border border-sky-200/90 px-3 py-2.5 space-y-2 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-sky-950 min-w-0">
+                <CheckCircle2 className="w-3.5 h-3.5 text-sky-700 shrink-0" />
+                <span className="font-semibold">
+                  Antidimenticanza da commesse simili ({forgottenSuggestions.length}):
+                </span>
+                <span className="text-sky-800 truncate">
+                  materiali spediti spesso insieme a questa lista ma assenti qui
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {forgottenSuggestions.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => forgottenSuggestions.forEach(handleAcceptForgottenItem)}
+                    className="px-2.5 py-1 rounded-lg bg-sky-700 hover:bg-sky-800 text-white text-[11px] font-semibold cursor-pointer whitespace-nowrap transition-colors"
+                  >
+                    Aggiungi tutti ({forgottenSuggestions.length})
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = { ...dismissedSuggestions };
+                    forgottenSuggestions.forEach((s) => {
+                      next[`${load.id}:${s.signatureKey}`] = true;
+                    });
+                    setDismissedSuggestions(next);
+                  }}
+                  className="p-1 rounded-md text-sky-700 hover:bg-sky-100 cursor-pointer"
+                  title="Nascondi suggerimenti per questa commessa"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
+              {forgottenSuggestions.map((s) => (
+                <div
+                  key={s.signatureKey}
+                  className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-white border border-sky-200/70"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-900 truncate">
+                      <span className="font-mono text-[11px] text-slate-500 shrink-0">
+                        {s.sku}
+                      </span>
+                      <span className="truncate">{s.name}</span>
+                    </div>
+                    <div className="text-[11px] text-slate-500 truncate">
+                      {s.reason} · q.tà tipica{' '}
+                      <span className="font-mono tabular-nums font-semibold text-slate-700">
+                        {s.typicalQty}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleAcceptForgottenItem(s)}
+                      className="px-2 py-1 rounded-md bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-semibold cursor-pointer whitespace-nowrap transition-colors"
+                    >
+                      + Aggiungi
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDismissedSuggestions((prev) => ({
+                          ...prev,
+                          [`${load.id}:${s.signatureKey}`]: true,
+                        }))
+                      }
+                      className="p-1 rounded text-slate-400 hover:text-slate-700 cursor-pointer"
+                      title="Ignora"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 text-xs items-end">
           <div className="lg:col-span-1">
@@ -1060,6 +1334,163 @@ export const ChecklistWorkspace: React.FC<ChecklistWorkspaceProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE LETTURA AUTOMATICA LOCALE PDF / FOTO OCR / EXCEL (ZERO API) */}
+      {showSmartImportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[86vh] flex flex-col overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <ScanLine className="w-4 h-4 text-amber-600" />
+                  Lettura Automatica da PDF, Foto Bolla o Excel
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Elaborazione 100% locale senza API: estrae SKU, descrizioni, quantità, pesi e fragili.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSmartImportModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto space-y-4">
+              {/* Drop / Upload */}
+              <label className="block rounded-xl border-2 border-dashed border-slate-300 hover:border-slate-500 bg-slate-50 p-5 text-center cursor-pointer transition-colors">
+                <input
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls,.csv,.ods,.txt"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleSmartDocFile(f);
+                    e.target.value = '';
+                  }}
+                  className="hidden"
+                />
+                <Upload className="w-6 h-6 text-slate-500 mx-auto mb-2" />
+                <div className="text-xs font-semibold text-slate-800">
+                  Scegli un PDF, una foto di bolla/lista o un file Excel
+                </div>
+                <div className="text-[11px] text-slate-500 mt-1">
+                  Formati supportati: .pdf · .jpg/.png (OCR locale) · .xlsx/.xls/.csv
+                </div>
+              </label>
+
+              {importBusy && (
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-medium text-slate-700">
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
+                      {importProgressLabel}
+                    </span>
+                    <span className="font-mono tabular-nums">{importProgressPct}%</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                    <div
+                      style={{ width: `${importProgressPct}%` }}
+                      className="h-full bg-slate-900 transition-all duration-200"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {importError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800">
+                  {importError}
+                </div>
+              )}
+
+              {parsedDoc && (
+                <div className="space-y-3">
+                  <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-950">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>
+                        Rilevati <strong>{parsedDoc.items.length} articoli</strong> da{' '}
+                        <span className="font-mono">{parsedDoc.fileName}</span>
+                      </span>
+                    </div>
+                    {(parsedDoc.detectedClient || parsedDoc.detectedDestination) && (
+                      <label className="flex items-center gap-1.5 text-[11px] font-medium cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={applyDetectedHeader}
+                          onChange={(e) => setApplyDetectedHeader(e.target.checked)}
+                          className="accent-emerald-700"
+                        />
+                        Aggiorna cliente/destinazione ({parsedDoc.detectedClient || parsedDoc.detectedDestination})
+                      </label>
+                    )}
+                  </div>
+
+                  <div className="max-h-[260px] overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100 text-xs">
+                    {parsedDoc.items.map((it, idx) => (
+                      <label
+                        key={idx}
+                        className="px-3 py-2 flex items-center justify-between gap-3 bg-white hover:bg-slate-50 cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(selectedImportRows[idx])}
+                            onChange={(e) =>
+                              setSelectedImportRows((prev) => ({
+                                ...prev,
+                                [idx]: e.target.checked,
+                              }))
+                            }
+                            className="accent-slate-900"
+                          />
+                          <div className="min-w-0">
+                            <div className="font-mono font-semibold text-slate-900">
+                              {it.sku}{' '}
+                              <span className="font-sans font-medium text-slate-700">
+                                — {it.name}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-500">
+                              {it.category}
+                              {it.fragile ? ' · Fragile' : ''}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="font-mono text-right shrink-0 tabular-nums">
+                          <div className="font-bold text-slate-900">×{it.quantity} pz</div>
+                          <div className="text-[10.5px] text-slate-500">
+                            {it.unitWeightKg.toFixed(2)} kg/pz
+                          </div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="px-5 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowSmartImportModal(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                disabled={!parsedDoc || Object.values(selectedImportRows).filter(Boolean).length === 0}
+                onClick={handleConfirmSmartImport}
+                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white text-xs font-semibold cursor-pointer"
+              >
+                Importa {Object.values(selectedImportRows).filter(Boolean).length} articoli nella Check-List
+              </button>
+            </div>
           </div>
         </div>
       )}

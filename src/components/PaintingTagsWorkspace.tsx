@@ -19,6 +19,7 @@ import {
 } from '../types/warehouse';
 import { LoadSummary } from '../utils/calculations';
 import { FinishingPrintModal } from './FinishingPrintModal';
+import { detectFinishingTagsFromLoad } from '../utils/localAutoEngine';
 
 interface PaintingTagsWorkspaceProps {
   load: CargoLoad;
@@ -580,7 +581,26 @@ export const PaintingTagsWorkspace: React.FC<PaintingTagsWorkspaceProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              const detected = detectFinishingTagsFromLoad(load);
+              if (detected.length === 0) return;
+              detected.forEach((tag) => onAddFinishingTag(tag));
+              handleLoadTagIntoLayout({
+                ...detected[0],
+                id: 'preview',
+                createdAt: new Date().toISOString(),
+              });
+            }}
+            className="px-3.5 py-2 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 border border-amber-500/70 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+            title="Cerca codici RAL, Zincatura e trattamenti negli articoli della commessa e genera i cartelli in automatico"
+          >
+            <Paintbrush className="w-3.5 h-3.5" />
+            <span>Rileva Cartelli da Commessa</span>
+          </button>
+
           {savedTags.length > 0 && (
             <button
               type="button"

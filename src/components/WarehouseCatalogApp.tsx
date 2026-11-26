@@ -34,10 +34,13 @@ import {
   Box,
   Truck,
   Clock,
+  QrCode,
 } from 'lucide-react';
 import {
   AuthUser,
   CargoLoad,
+  CrmContact,
+  PurchaseOrder,
   StockMovement,
   WarehouseInventoryState,
   WarehouseItemAttachment,
@@ -55,13 +58,23 @@ import {
   downloadOutboundManifestExcel,
   downloadOutboundManifestPdf,
 } from '../utils/outboundManifestExporter';
+import {
+  autoClassifyWarehouseItems,
+  computePredictiveStockForecast,
+  learnItemPattern,
+} from '../utils/localAutoEngine';
+import { parseQrCommand } from '../utils/qrCommandSheet';
+import { QrCommandSheetModal } from './QrCommandSheetModal';
 
 interface WarehouseCatalogAppProps {
   inventory: WarehouseInventoryState;
   loads: CargoLoad[];
   activeLoad?: CargoLoad;
+  purchaseOrders?: PurchaseOrder[];
+  contacts?: CrmContact[];
   currentUser: AuthUser;
   onUpdateInventory: (next: WarehouseInventoryState, notice?: string) => void;
+  onOpenPurchaseOrders?: () => void;
   onDispatchTrackingRecord?: (
     record: ResolvedTrackingRecord,
     options?: { syncWarehouse?: boolean; undo?: boolean }
@@ -207,17 +220,49 @@ function playScannerBeep(kind: 'in' | 'out' | 'new' | 'warn') {
 export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
   inventory,
   loads,
+  purchaseOrders = [],
+  contacts = [],
   currentUser,
   onUpdateInventory,
+  onOpenPurchaseOrders,
   onDispatchTrackingRecord,
 }) => {
   const [activeTab, setActiveTab] = useState<WarehouseTab>('catalog');
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   const [sortBy, setSortBy] = useState<CatalogSort>('name_asc');
 
+  const predictiveAlerts = useMemo(
+    () =>
+      computePredictiveStockForecast(inventory, loads, purchaseOrders, contacts).filter(
+        (a) => !a.isAlreadyLowStock || a.committedInOpenLoads > 0 || a.daysUntilStockout !== null
+      ),
+    [inventory, loads, purchaseOrders, contacts]
+  );
+
   // USB / Keyboard Barcode Terminal State (zero camera)
   // Il magazzino è sempre aziendale/generale: l'associazione a un MTR è facoltativa
-  const [scanMode, setScanMode] = useState<'carico' | 'scarico'>('carico');
+  const [scanMode, setScanMode] = useState<'carico' | 'scarico'>('scarico');
+  const [confirmWithGunMode, setConfirmWithGunMode] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('metatron_pos_confirm_mode_v1');
+      return saved === null ? true : saved === '1';
+    } catch {
+      return true;
+    }
+  });
+  const [pendingScanQueue, setPendingScanQueue] = useState<
+    Array<{
+      itemId: string;
+      sku: string;
+      barcode?: string;
+      name: string;
+      unit: string;
+      currentStock: number;
+      minStock: number;
+      qty: number;
+    }>
+  >([]);
+  const [qrSheetOpen, setQrSheetOpen] = useState<boolean>(false);
   const [scanCodeInput, setScanCodeInput] = useState('');
   const [scanQty, setScanQty] = useState<number>(1);
   const [scanCommessaCode, setScanCommessaCode] = useState<string>('');
@@ -695,21 +740,321 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
     return Array.from(map.values());
   }, [matchedCommessaRecord]);
 
+  const toggleConfirmWithGunMode = (enabled: boolean) => {
+    setConfirmWithGunMode(enabled);
+    try {
+      localStorage.setItem('metatron_pos_confirm_mode_v1', enabled ? '1' : '0');
+    } catch {
+      // ignore
+    }
+  };
+
+  const commitPendingScanQueue = useCallback(() => {
+    if (pendingScanQueue.length === 0) {
+      if (soundEnabled) playScannerBeep('warn');
+      setLastScannedBanner({
+        kind: 'warn',
+        title: 'Nessun articolo in coda',
+        detail: 'Spara prima un articolo con la pistola, poi spara CONFERMA.',
+      });
+      return;
+    }
+
+    const nowIso = new Date().toISOString();
+    const qtyById = new Map<string, number>();
+    pendingScanQueue.forEach((p) => {
+      qtyById.set(p.itemId, (qtyById.get(p.itemId) || 0) + Math.max(1, p.qty));
+    });
+
+    const newMovs: StockMovement[] = [];
+    const newSessions: SessionScanEntry[] = [];
+    let totalPieces = 0;
+
+    const nextItems = items.map((it) => {
+      const q = qtyById.get(it.id);
+      if (!q) return it;
+      totalPieces += q;
+      const previousQty = it.quantity;
+      const resultingQty =
+        scanMode === 'carico'
+          ? Math.round((previousQty + q) * 100) / 100
+          : Math.max(0, Math.round((previousQty - q) * 100) / 100);
+      const movementId = `mov-pos-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 6)}`;
+
+      newMovs.push({
+        id: movementId,
+        itemId: it.id,
+        sku: it.sku,
+        itemName: it.name,
+        unit: it.unit,
+        type: scanMode,
+        quantity: q,
+        previousQty,
+        resultingQty,
+        reason:
+          scanMode === 'carico'
+            ? 'Entrata confermata da pistola barcode'
+            : 'Uscita confermata da pistola barcode',
+        commessaCode: scanCommessaCode.trim() || undefined,
+        operatorName: currentUser.name,
+        timestamp: nowIso,
+      });
+
+      newSessions.push({
+        id: `ses-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+        movementId,
+        itemId: it.id,
+        sku: it.sku,
+        barcode: it.barcode,
+        name: it.name,
+        mode: scanMode,
+        quantity: q,
+        unit: it.unit,
+        previousQty,
+        resultingQty,
+        timestamp: nowIso,
+      });
+
+      return {
+        ...it,
+        quantity: resultingQty,
+        usageCount: (it.usageCount || 0) + 1,
+        updatedAt: nowIso,
+      };
+    });
+
+    if (newMovs.length === 0) {
+      setPendingScanQueue([]);
+      return;
+    }
+
+    const firstDone = newSessions[0];
+    const summaryNotice =
+      newSessions.length === 1 && firstDone
+        ? scanMode === 'carico'
+          ? `Confermato CARICO +${firstDone.quantity} ${firstDone.unit} di ${firstDone.name} (Giacenza: ${firstDone.resultingQty})`
+          : `Confermato SCARICO −${firstDone.quantity} ${firstDone.unit} di ${firstDone.name} (Giacenza: ${firstDone.resultingQty})`
+        : `Confermati ${newSessions.length} articoli (${
+            scanMode === 'carico' ? '+' : '−'
+          }${totalPieces} pz totali)`;
+
+    onUpdateInventory(
+      {
+        ...inventory,
+        items: nextItems,
+        movements: [...newMovs, ...movements],
+      },
+      summaryNotice
+    );
+
+    if (soundEnabled) {
+      playScannerBeep(scanMode === 'carico' ? 'in' : 'out');
+    }
+
+    setLastScannedBanner({
+      kind: scanMode === 'carico' ? 'in' : 'out',
+      title:
+        newSessions.length === 1 && firstDone
+          ? `${firstDone.name} · Confermato`
+          : `${newSessions.length} articoli confermati`,
+      detail: summaryNotice,
+      resultingQty:
+        newSessions.length === 1 && firstDone ? firstDone.resultingQty : undefined,
+      unit: newSessions.length === 1 && firstDone ? firstDone.unit : undefined,
+    });
+
+    setSessionLog((prev) => [...newSessions, ...prev].slice(0, 50));
+    setPendingScanQueue([]);
+    setScanQty(1);
+  }, [
+    pendingScanQueue,
+    items,
+    movements,
+    inventory,
+    scanMode,
+    scanCommessaCode,
+    currentUser.name,
+    onUpdateInventory,
+    soundEnabled,
+  ]);
+
+  const queueItemForConfirmation = useCallback(
+    (found: WarehouseStockItem, qtyToAdd: number) => {
+      const safeAdd = Math.max(1, qtyToAdd || 1);
+      setPendingScanQueue((prev) => {
+        const existing = prev.find((p) => p.itemId === found.id);
+        if (existing) {
+          const updated = {
+            ...existing,
+            currentStock: found.quantity,
+            qty: existing.qty + safeAdd,
+          };
+          return [updated, ...prev.filter((p) => p.itemId !== found.id)];
+        }
+        return [
+          {
+            itemId: found.id,
+            sku: found.sku,
+            barcode: found.barcode,
+            name: found.name,
+            unit: found.unit,
+            currentStock: found.quantity,
+            minStock: found.minStock,
+            qty: safeAdd,
+          },
+          ...prev,
+        ];
+      });
+      if (soundEnabled) playScannerBeep('new');
+      setLastScannedBanner({
+        kind: scanMode === 'carico' ? 'in' : 'out',
+        title: `In coda: ${found.name}`,
+        detail: `Spara ancora per sommare, scegli CARICO/SCARICO o quantità, poi spara CONFERMA (MTCONFERMA).`,
+      });
+    },
+    [scanMode, soundEnabled]
+  );
+
   const processScannedCode = useCallback(
     (rawCode: string) => {
       const code = rawCode.trim();
       if (!code) return;
+
+      // 0. Intercetta prima i QR Comandi Rapidi da Banco (MTCARICO, MTSCARICO, MTCONFERMA, MTANNULLA, MTQ*, MTA*)
+      const qrCmd = parseQrCommand(code);
+      if (qrCmd) {
+        if (qrCmd.kind === 'mode') {
+          setScanMode(qrCmd.mode);
+          if (soundEnabled) playScannerBeep(qrCmd.mode === 'carico' ? 'in' : 'out');
+          setLastScannedBanner({
+            kind: qrCmd.mode === 'carico' ? 'in' : 'out',
+            title: qrCmd.label,
+            detail:
+              pendingScanQueue.length > 0
+                ? `${pendingScanQueue.length} art. in coda pronti · Spara CONFERMA per registrare.`
+                : 'Ora spara il codice dell\'articolo.',
+          });
+        } else if (qrCmd.kind === 'set_qty') {
+          setScanQty(qrCmd.qty);
+          if (pendingScanQueue.length > 0) {
+            setPendingScanQueue((prev) =>
+              prev.map((row, i) => (i === 0 ? { ...row, qty: qrCmd.qty } : row))
+            );
+          }
+          if (soundEnabled) playScannerBeep('in');
+          setLastScannedBanner({
+            kind: scanMode === 'carico' ? 'in' : 'out',
+            title: qrCmd.label,
+            detail:
+              pendingScanQueue.length > 0
+                ? `Aggiornata quantità di "${pendingScanQueue[0].name}" a ${qrCmd.qty} · Spara CONFERMA.`
+                : `Prossima scansione impostata a ×${qrCmd.qty}.`,
+          });
+        } else if (qrCmd.kind === 'add_qty') {
+          if (pendingScanQueue.length > 0) {
+            const target = pendingScanQueue[0];
+            setPendingScanQueue((prev) =>
+              prev.map((row, i) =>
+                i === 0 ? { ...row, qty: row.qty + qrCmd.delta } : row
+              )
+            );
+            if (soundEnabled) playScannerBeep('in');
+            setLastScannedBanner({
+              kind: scanMode === 'carico' ? 'in' : 'out',
+              title: `${target.name} → ${target.qty + qrCmd.delta} ${target.unit}`,
+              detail: `Aggiunti +${qrCmd.delta} pz in coda · Spara CONFERMA per salvare.`,
+            });
+          } else {
+            setScanQty((q) => q + qrCmd.delta);
+            if (soundEnabled) playScannerBeep('in');
+            setLastScannedBanner({
+              kind: scanMode === 'carico' ? 'in' : 'out',
+              title: qrCmd.label,
+              detail: 'Quantità aumentata per la prossima scansione.',
+            });
+          }
+        } else if (qrCmd.kind === 'confirm') {
+          commitPendingScanQueue();
+        } else if (qrCmd.kind === 'cancel') {
+          if (pendingScanQueue.length > 0) {
+            setPendingScanQueue([]);
+            setScanQty(1);
+            if (soundEnabled) playScannerBeep('warn');
+            setLastScannedBanner({
+              kind: 'warn',
+              title: 'Coda svuotata',
+              detail: 'Operazione annullata. Pronto per una nuova scansione.',
+            });
+          } else {
+            const latestUndoable = sessionLog.find((e) => !e.undone);
+            if (latestUndoable) {
+              const target = items.find((it) => it.id === latestUndoable.itemId);
+              if (target) {
+                const nowIso = new Date().toISOString();
+                const reversedQty =
+                  latestUndoable.mode === 'carico'
+                    ? Math.max(
+                        0,
+                        Math.round((target.quantity - latestUndoable.quantity) * 100) / 100
+                      )
+                    : Math.round((target.quantity + latestUndoable.quantity) * 100) / 100;
+                onUpdateInventory(
+                  {
+                    ...inventory,
+                    items: items.map((it) =>
+                      it.id === target.id
+                        ? { ...it, quantity: reversedQty, updatedAt: nowIso }
+                        : it
+                    ),
+                    movements: movements.filter(
+                      (m) => m.id !== latestUndoable.movementId
+                    ),
+                  },
+                  `Annullato ultimo movimento: ${latestUndoable.name}`
+                );
+                setSessionLog((prev) =>
+                  prev.map((e) =>
+                    e.id === latestUndoable.id ? { ...e, undone: true } : e
+                  )
+                );
+                if (soundEnabled) playScannerBeep('warn');
+                setLastScannedBanner({
+                  kind: 'warn',
+                  title: `Annullato: ${latestUndoable.name}`,
+                  detail: `Giacenza ripristinata a ${reversedQty} ${target.unit}.`,
+                });
+              }
+            } else {
+              if (soundEnabled) playScannerBeep('warn');
+              setLastScannedBanner({
+                kind: 'warn',
+                title: 'Nulla da annullare',
+                detail: 'Nessun movimento recente in sessione.',
+              });
+            }
+          }
+        }
+        setScanCodeInput('');
+        return;
+      }
+
       const found = findItemByCode(code);
       if (found) {
         setMatchedCommessaRef(null);
-        applyStockMovement(
-          found,
-          scanMode,
-          scanQty,
-          scanMode === 'carico'
-            ? 'Entrata da lettore barcode USB'
-            : 'Uscita da lettore barcode USB'
-        );
+        if (confirmWithGunMode) {
+          queueItemForConfirmation(found, scanQty);
+        } else {
+          applyStockMovement(
+            found,
+            scanMode,
+            scanQty,
+            scanMode === 'carico'
+              ? 'Entrata da lettore barcode USB'
+              : 'Uscita da lettore barcode USB'
+          );
+        }
       } else {
         // Verifica se il barcode/QR appartiene a un Bancale, Scatola o Oggetto di una Commessa (TiMini / Etichette A4)
         const trackedMatch = lookupScannedCodeAcrossLoads(code, loads, movements);
@@ -756,6 +1101,14 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
     [
       findItemByCode,
       applyStockMovement,
+      confirmWithGunMode,
+      queueItemForConfirmation,
+      commitPendingScanQueue,
+      pendingScanQueue,
+      sessionLog,
+      items,
+      inventory,
+      onUpdateInventory,
       scanMode,
       scanQty,
       loads,
@@ -768,6 +1121,10 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
 
   const handleScanSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!scanCodeInput.trim() && confirmWithGunMode && pendingScanQueue.length > 0) {
+      commitPendingScanQueue();
+      return;
+    }
     processScannedCode(scanCodeInput);
   };
 
@@ -1129,6 +1486,16 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
         nextMovements = [adjMov, ...movements];
       }
 
+      learnItemPattern({
+        sku: cleanSku,
+        barcode: cleanBarcode || undefined,
+        name: cleanName,
+        category: cleanCategory,
+        unit: formUnit || 'pz',
+        location: formLocation.trim() || undefined,
+        supplier: formSupplier.trim() || undefined,
+      });
+
       onUpdateInventory(
         {
           ...inventory,
@@ -1183,6 +1550,16 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
             timestamp: nowIso,
           }
         : null;
+
+    learnItemPattern({
+      sku: cleanSku,
+      barcode: cleanBarcode || undefined,
+      name: cleanName,
+      category: cleanCategory,
+      unit: formUnit || 'pz',
+      location: formLocation.trim() || undefined,
+      supplier: formSupplier.trim() || undefined,
+    });
 
     onUpdateInventory(
       {
@@ -1657,6 +2034,28 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                const res = autoClassifyWarehouseItems(
+                  items,
+                  inventory.categories || []
+                );
+                if (res.updatedCount > 0) {
+                  onUpdateInventory(
+                    { ...inventory, items: res.nextItems },
+                    res.learnedAppliedCount > 0
+                      ? `Classificati ${res.updatedCount} articoli (${res.learnedAppliedCount} dalle tue abitudini)`
+                      : `Classificati automaticamente ${res.updatedCount} articoli`
+                  );
+                }
+              }}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-amber-950 bg-amber-100 hover:bg-amber-200 border border-amber-300 flex items-center gap-1.5 cursor-pointer whitespace-nowrap transition-colors"
+              title="Compila automaticamente categoria, unità e scaffale per gli articoli incompleti o creati a q.tà 0"
+            >
+              <Tag className="w-3.5 h-3.5 text-amber-700" />
+              <span>Auto-Classifica</span>
+            </button>
             {activeTab !== 'pos' && (
               <button
                 type="button"
@@ -1686,6 +2085,35 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
             =============================================================== */}
             {(activeTab === 'catalog' || activeTab === 'low_stock') && (
               <div className="max-w-7xl mx-auto space-y-4">
+                {/* Previsione Scorte Predittiva (anticipa gli esaurimenti da consumi e commesse aperte) */}
+                {predictiveAlerts.length > 0 && (
+                  <div className="rounded-xl bg-amber-50/85 border border-amber-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                      <div className="min-w-0 text-xs">
+                        <div className="font-semibold text-amber-950">
+                          Previsione scorte: {predictiveAlerts.length} articoli in esaurimento in base a consumi e commesse aperte
+                        </div>
+                        <div className="text-amber-900/90 mt-0.5 truncate">
+                          {predictiveAlerts
+                            .slice(0, 2)
+                            .map((a) => `${a.item.name} (${a.reason})`)
+                            .join(' · ')}
+                        </div>
+                      </div>
+                    </div>
+                    {onOpenPurchaseOrders && (
+                      <button
+                        type="button"
+                        onClick={onOpenPurchaseOrders}
+                        className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 transition-colors"
+                      >
+                        Prepara Ordini Fornitori
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 {/* 4 KPI Piani a singola elevazione */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                   <div className="bg-white border border-slate-200 rounded-xl px-4 py-3">
@@ -2269,44 +2697,72 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                     onSubmit={handleScanSubmit}
                     className="bg-white border border-slate-200 rounded-xl p-5 space-y-4"
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2.5">
                       {/* Segmented Mode Control */}
                       <div className="inline-flex items-center p-1 bg-slate-100 rounded-lg">
                         <button
                           type="button"
                           onClick={() => setScanMode('carico')}
-                          className={`px-3.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
+                          className={`px-3.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap ${
                             scanMode === 'carico'
                               ? 'bg-emerald-600 text-white'
                               : 'text-slate-600 hover:text-slate-900'
                           }`}
                         >
                           <ArrowDownCircle className="w-3.5 h-3.5" />
-                          <span>Entrata (+)</span>
+                          <span>Carico (+)</span>
                         </button>
                         <button
                           type="button"
                           onClick={() => setScanMode('scarico')}
-                          className={`px-3.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
+                          className={`px-3.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap ${
                             scanMode === 'scarico'
                               ? 'bg-rose-600 text-white'
                               : 'text-slate-600 hover:text-slate-900'
                           }`}
                         >
                           <ArrowUpCircle className="w-3.5 h-3.5" />
-                          <span>Uscita (−)</span>
+                          <span>Scarico (−)</span>
                         </button>
                       </div>
 
-                      <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={autoFocusScanner}
-                          onChange={(e) => setAutoFocusScanner(e.target.checked)}
-                          className="rounded accent-slate-900"
-                        />
-                        <span>Mantieni campo pronto per pistola USB</span>
-                      </label>
+                      {/* Segmented Workflow: Prepara→Conferma vs Diretto */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="inline-flex items-center p-1 bg-slate-100 rounded-lg">
+                          <button
+                            type="button"
+                            onClick={() => toggleConfirmWithGunMode(true)}
+                            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold cursor-pointer transition-colors whitespace-nowrap ${
+                              confirmWithGunMode
+                                ? 'bg-slate-900 text-white'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            Prepara → Conferma
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => toggleConfirmWithGunMode(false)}
+                            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold cursor-pointer transition-colors whitespace-nowrap ${
+                              !confirmWithGunMode
+                                ? 'bg-slate-900 text-white'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            Diretto
+                          </button>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setQrSheetOpen(true)}
+                          className="px-3 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-950 text-xs font-semibold flex items-center gap-1.5 cursor-pointer whitespace-nowrap transition-colors"
+                          title="Stampa i QR Comandi Rapidi da attaccare al banco (CARICO, SCARICO, ×5, ×10, CONFERMA)"
+                        >
+                          <QrCode className="w-3.5 h-3.5 text-amber-800" />
+                          <span>Plancia QR Comandi</span>
+                        </button>
+                      </div>
                     </div>
 
                     {/* Campo Codice a Barre / SKU */}
@@ -2319,7 +2775,11 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                             type="text"
                             value={scanCodeInput}
                             onChange={(e) => setScanCodeInput(e.target.value)}
-                            placeholder="Scansiona codice a barre con lettore USB o digita SKU e premi Invio..."
+                            placeholder={
+                              confirmWithGunMode
+                                ? 'Spara articolo (anche più volte), poi CARICO/SCARICO o quantità, poi CONFERMA...'
+                                : 'Scansiona codice a barre con lettore USB o digita SKU e premi Invio...'
+                            }
                             autoComplete="off"
                             className="w-full pl-10 pr-4 py-3 text-sm font-mono font-semibold bg-slate-50 border border-slate-300 rounded-lg text-slate-900 placeholder:font-sans placeholder:font-normal placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-slate-900"
                           />
@@ -2332,7 +2792,13 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                               : 'bg-rose-600 hover:bg-rose-700'
                           }`}
                         >
-                          {scanMode === 'carico' ? 'Carica +' : 'Scarica −'}
+                          {confirmWithGunMode
+                            ? pendingScanQueue.length > 0 && !scanCodeInput.trim()
+                              ? 'Conferma ora'
+                              : 'Aggiungi in coda'
+                            : scanMode === 'carico'
+                            ? 'Carica +'
+                            : 'Scarica −'}
                         </button>
                       </div>
 
@@ -2344,14 +2810,18 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                               key={sug.id}
                               type="button"
                               onClick={() => {
-                                applyStockMovement(
-                                  sug,
-                                  scanMode,
-                                  scanQty,
-                                  scanMode === 'carico'
-                                    ? 'Entrata rapida da terminale'
-                                    : 'Uscita rapida da terminale'
-                                );
+                                if (confirmWithGunMode) {
+                                  queueItemForConfirmation(sug, scanQty);
+                                } else {
+                                  applyStockMovement(
+                                    sug,
+                                    scanMode,
+                                    scanQty,
+                                    scanMode === 'carico'
+                                      ? 'Entrata rapida da terminale'
+                                      : 'Uscita rapida da terminale'
+                                  );
+                                }
                                 setScanCodeInput('');
                               }}
                               className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center justify-between gap-3 cursor-pointer"
@@ -2374,11 +2844,156 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                       )}
                     </div>
 
+                    {/* CODA IN ATTESA DI CONFERMA (Modalità Pistola Hands-Free) */}
+                    {confirmWithGunMode && pendingScanQueue.length > 0 && (
+                      <div
+                        className={`rounded-xl border-2 p-4 space-y-3 ${
+                          scanMode === 'carico'
+                            ? 'bg-emerald-50/70 border-emerald-400'
+                            : 'bg-rose-50/70 border-rose-400'
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <div className="text-xs font-bold text-slate-900">
+                              Pronto da confermare ·{' '}
+                              <span
+                                className={
+                                  scanMode === 'carico'
+                                    ? 'text-emerald-700'
+                                    : 'text-rose-700'
+                                }
+                              >
+                                {scanMode === 'carico' ? 'CARICO (+)' : 'SCARICO (−)'}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-600">
+                              Spara di nuovo lo stesso articolo per sommare, cambia Carico/Scarico o spara il QR <strong>CONFERMA</strong>.
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPendingScanQueue([]);
+                                setScanQty(1);
+                              }}
+                              className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-xs font-semibold text-slate-700 cursor-pointer whitespace-nowrap"
+                            >
+                              Annulla
+                            </button>
+                            <button
+                              type="button"
+                              onClick={commitPendingScanQueue}
+                              className={`px-4 py-1.5 rounded-lg text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                                scanMode === 'carico'
+                                  ? 'bg-emerald-600 hover:bg-emerald-700'
+                                  : 'bg-rose-600 hover:bg-rose-700'
+                              }`}
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>
+                                Conferma ({pendingScanQueue.reduce((s, p) => s + p.qty, 0)} pz)
+                              </span>
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          {pendingScanQueue.map((row) => {
+                            const liveItem = items.find((i) => i.id === row.itemId);
+                            const baseQty = liveItem ? liveItem.quantity : row.currentStock;
+                            const nextStock =
+                              scanMode === 'carico'
+                                ? baseQty + row.qty
+                                : Math.max(0, baseQty - row.qty);
+                            return (
+                              <div
+                                key={row.itemId}
+                                className="bg-white border border-slate-200 rounded-lg px-3 py-2 flex flex-wrap items-center justify-between gap-2"
+                              >
+                                <div className="min-w-0">
+                                  <div className="text-xs font-semibold text-slate-900 truncate">
+                                    {row.name}
+                                  </div>
+                                  <div className="text-[11px] font-mono tabular-nums text-slate-500">
+                                    {row.sku} · Giacenza: {baseQty} →{' '}
+                                    <strong
+                                      className={
+                                        scanMode === 'carico'
+                                          ? 'text-emerald-700'
+                                          : 'text-rose-700'
+                                      }
+                                    >
+                                      {nextStock} {row.unit}
+                                    </strong>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setPendingScanQueue((prev) =>
+                                        prev
+                                          .map((p) =>
+                                            p.itemId === row.itemId
+                                              ? { ...p, qty: Math.max(1, p.qty - 1) }
+                                              : p
+                                          )
+                                      )
+                                    }
+                                    className="w-7 h-7 rounded-md border border-slate-200 bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-700 cursor-pointer"
+                                    aria-label="Riduci quantità"
+                                  >
+                                    <Minus className="w-3.5 h-3.5" />
+                                  </button>
+                                  <span className="min-w-[46px] text-center font-mono tabular-nums text-sm font-bold text-slate-900">
+                                    {scanMode === 'carico' ? '+' : '−'}
+                                    {row.qty}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setPendingScanQueue((prev) =>
+                                        prev.map((p) =>
+                                          p.itemId === row.itemId
+                                            ? { ...p, qty: p.qty + 1 }
+                                            : p
+                                        )
+                                      )
+                                    }
+                                    className="w-7 h-7 rounded-md border border-slate-200 bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-700 cursor-pointer"
+                                    aria-label="Aumenta quantità"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setPendingScanQueue((prev) =>
+                                        prev.filter((p) => p.itemId !== row.itemId)
+                                      )
+                                    }
+                                    className="p-1.5 rounded-md text-slate-400 hover:text-rose-600 cursor-pointer"
+                                    aria-label="Rimuovi dalla coda"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Quantità e Commessa */}
                     <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-1">
                       <div className="sm:col-span-7">
                         <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                          Quantità per operazione
+                          Quantità per scansione
                         </label>
                         <div className="flex items-center gap-1.5">
                           {[1, 2, 5, 10].map((preset) => (
@@ -2427,9 +3042,20 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                       </div>
                     </div>
 
-                    <p className="text-xs text-slate-500">
-                      Legge sia gli articoli del magazzino sia i barcode/QR dei <strong>Bancali e Scatole</strong> stampati con TiMini Print o Etichette A4 (in modalità Uscita scarica tutto il contenuto con data e ora).
-                    </p>
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5 text-xs text-slate-500">
+                      <label className="flex items-center gap-2 text-slate-600 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={autoFocusScanner}
+                          onChange={(e) => setAutoFocusScanner(e.target.checked)}
+                          className="rounded accent-slate-900"
+                        />
+                        <span>Mantieni campo pronto per pistola USB</span>
+                      </label>
+                      <span>
+                        Supporta i QR Comandi (<strong>MTCARICO</strong>, <strong>MTSCARICO</strong>, <strong>MTCONFERMA</strong>) e i QR Bancali/Scatole.
+                      </span>
+                    </div>
                   </form>
 
                   {/* Scheda Bancale / Scatola Commessa Riconosciuto dal Barcode */}
@@ -3823,6 +4449,11 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
           </div>
         </div>
       )}
+
+      <QrCommandSheetModal
+        isOpen={qrSheetOpen}
+        onClose={() => setQrSheetOpen(false)}
+      />
     </div>
   );
 };

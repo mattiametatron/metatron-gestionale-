@@ -55,6 +55,8 @@ import {
   DownloadCloud,
   Building2,
   ShoppingCart,
+  Loader2,
+  AlertTriangle,
 } from 'lucide-react';
 import { AuthUser, CargoLoad } from '../types/warehouse';
 import { DesktopAppIcon } from './DesktopAppIcon';
@@ -62,6 +64,11 @@ import { LoadSummary } from '../utils/calculations';
 import { TutorialContextId } from '../data/appTutorials';
 import { AuroraSilkWallpaper } from './AuroraSilkWallpaper';
 import { NotificationCenter, UnifiedNotification } from './NotificationCenter';
+import {
+  WhatsNewShowcaseModal,
+  WHATS_NEW_RELEASE_KEY,
+} from './WhatsNewShowcaseModal';
+import { ZeroClickCommessaResult } from '../utils/localAutoEngine';
 
 export type CaricoStudioSubAppId =
   | 'commesse'
@@ -1234,6 +1241,10 @@ interface SynologyDesktopOSProps {
   onMarkNotificationRead: (item: UnifiedNotification) => void;
   onMarkAllNotificationsRead: () => void;
   onDismissNotification: (item: UnifiedNotification) => void;
+  onZeroClickFileDrop?: (
+    file: File,
+    onProgress: (pct: number, label: string) => void
+  ) => Promise<ZeroClickCommessaResult>;
   renderAppContent: (
     appId: SynologyAppId,
     openApp: (targetAppId: SynologyAppId) => void
@@ -1269,6 +1280,7 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
   onMarkNotificationRead,
   onMarkAllNotificationsRead,
   onDismissNotification,
+  onZeroClickFileDrop,
   renderAppContent,
 }) => {
   const [windows, setWindows] = useState<OpenWindowState[]>([]);
@@ -1281,7 +1293,68 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
   const [showCommessaMenu, setShowCommessaMenu] = useState<boolean>(false);
   const [showNotifications, setShowNotifications] = useState<boolean>(false);
   const [showWidgetPanel, setShowWidgetPanel] = useState<boolean>(false);
+  const [showWhatsNewModal, setShowWhatsNewModal] = useState<boolean>(false);
   const [liveNow, setLiveNow] = useState<Date>(() => new Date());
+
+  // Nuova Commessa Zero-Click da file trascinato sul desktop (PDF / Excel / Foto)
+  const zeroClickFileInputRef = useRef<HTMLInputElement | null>(null);
+  const desktopFileDragCounterRef = useRef<number>(0);
+  const [isDesktopFileDragging, setIsDesktopFileDragging] = useState(false);
+  const [zeroClickBusy, setZeroClickBusy] = useState(false);
+  const [zeroClickPct, setZeroClickPct] = useState(0);
+  const [zeroClickStage, setZeroClickStage] = useState('');
+  const [zeroClickError, setZeroClickError] = useState<string | null>(null);
+  const [zeroClickResult, setZeroClickResult] =
+    useState<ZeroClickCommessaResult | null>(null);
+
+  const runZeroClickCommessaFile = async (file: File) => {
+    if (!onZeroClickFileDrop) return;
+    setZeroClickError(null);
+    setZeroClickResult(null);
+    setZeroClickBusy(true);
+    setZeroClickPct(6);
+    setZeroClickStage(`Lettura locale di "${file.name}"...`);
+    try {
+      const res = await onZeroClickFileDrop(file, (pct, lbl) => {
+        setZeroClickPct(pct);
+        setZeroClickStage(lbl);
+      });
+      setZeroClickResult(res);
+    } catch (err) {
+      setZeroClickError(
+        err instanceof Error
+          ? err.message
+          : 'Impossibile creare la commessa da questo file.'
+      );
+    } finally {
+      setZeroClickBusy(false);
+    }
+  };
+
+  // Mostra l'avviso delle novità METATRON 2.0 in centro schermo al primo avvio dopo l'aggiornamento
+  useEffect(() => {
+    const storageKey = `${WHATS_NEW_RELEASE_KEY}_${currentUser.id}`;
+    try {
+      const seen = localStorage.getItem(storageKey);
+      if (!seen) {
+        const timer = window.setTimeout(() => {
+          setShowWhatsNewModal(true);
+        }, 550);
+        return () => window.clearTimeout(timer);
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, [currentUser.id]);
+
+  const handleCloseWhatsNew = () => {
+    setShowWhatsNewModal(false);
+    try {
+      localStorage.setItem(`${WHATS_NEW_RELEASE_KEY}_${currentUser.id}`, '1');
+    } catch {
+      // ignore
+    }
+  };
   const [desktopLayout, setDesktopLayout] = useState<'studio' | 'icons'>(() => {
     try {
       const saved = localStorage.getItem('metatron_desktop_layout_v2');
@@ -1905,9 +1978,47 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
           1. DESKTOP WORKSPACE (ICONE CLASSICHE O GRIGLIA REPARTI)
       ===================================================================== */}
       <div className="relative z-10 h-full w-full pb-[66px] overflow-hidden">
-        {/* Desktop Surface */}
+        {/* Desktop Surface (supporta drag & drop diretto di PDF/Excel/Foto per Commessa Zero-Click) */}
         <div
           ref={desktopAreaRef}
+          onDragEnter={(e) => {
+            if (!onZeroClickFileDrop) return;
+            if (!e.dataTransfer?.types?.includes('Files')) return;
+            if ((e.target as HTMLElement).closest('[data-window-shell="true"]')) return;
+            e.preventDefault();
+            desktopFileDragCounterRef.current += 1;
+            setIsDesktopFileDragging(true);
+          }}
+          onDragOver={(e) => {
+            if (!onZeroClickFileDrop) return;
+            if (!e.dataTransfer?.types?.includes('Files')) return;
+            if ((e.target as HTMLElement).closest('[data-window-shell="true"]')) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+          }}
+          onDragLeave={(e) => {
+            if (!onZeroClickFileDrop) return;
+            if (!e.dataTransfer?.types?.includes('Files')) return;
+            desktopFileDragCounterRef.current = Math.max(
+              0,
+              desktopFileDragCounterRef.current - 1
+            );
+            if (desktopFileDragCounterRef.current === 0) {
+              setIsDesktopFileDragging(false);
+            }
+          }}
+          onDrop={(e) => {
+            if (!onZeroClickFileDrop) return;
+            if (!e.dataTransfer?.files || e.dataTransfer.files.length === 0) return;
+            if ((e.target as HTMLElement).closest('[data-window-shell="true"]')) return;
+            e.preventDefault();
+            desktopFileDragCounterRef.current = 0;
+            setIsDesktopFileDragging(false);
+            const droppedFile = e.dataTransfer.files[0];
+            if (droppedFile) {
+              void runZeroClickCommessaFile(droppedFile);
+            }
+          }}
           onClick={() => {
             if (
               showStartMenu ||
@@ -1931,6 +2042,17 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
           }}
           className="no-print relative h-full w-full overflow-hidden"
         >
+          <input
+            ref={zeroClickFileInputRef}
+            type="file"
+            accept=".pdf,.xlsx,.xls,.xlsm,.csv,.ods,.tsv,.txt,image/*"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void runZeroClickCommessaFile(f);
+              e.target.value = '';
+            }}
+          />
           {desktopLayout === 'studio' ? (
             /* ===============================================================
                SCRIVANIA ORDINATA (STUDIO) — PULITA, STRUTTURATA, IMMEDIATA
@@ -2082,6 +2204,21 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
 
                   {/* Azioni Commessa */}
                   <div className="flex items-center gap-2 shrink-0">
+                    {onZeroClickFileDrop && (
+                      <button
+                        type="button"
+                        onClick={() => zeroClickFileInputRef.current?.click()}
+                        title="Carica o trascina sul desktop un PDF, Excel o foto bolla per creare automaticamente la nuova commessa completa"
+                        className={`px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 whitespace-nowrap transition-colors cursor-pointer ${
+                          isLightWallpaper
+                            ? 'bg-amber-100 hover:bg-amber-200 text-amber-950'
+                            : 'bg-amber-400/18 hover:bg-amber-400/28 border border-amber-300/30 text-amber-100'
+                        }`}
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Da File</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={onOpenNewLoadModal}
@@ -2763,6 +2900,7 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
           return (
             <div
               key={win.id}
+              data-window-shell="true"
               style={positionStyle}
               onMouseDown={() => {
                 if (!isFocused) focusWindow(win.id);
@@ -3507,7 +3645,18 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                 </button>
               </div>
 
-              <div className="pt-2 border-t border-white/10">
+              <div className="pt-2 border-t border-white/10 space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAccountMenu(false);
+                    setShowWhatsNewModal(true);
+                  }}
+                  className="w-full px-3 py-2 rounded-lg bg-amber-400/15 hover:bg-amber-400/25 text-amber-200 hover:text-white text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Novità METATRON 2.1</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -3522,6 +3671,197 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
               </div>
             </div>
           </>
+        )}
+
+        {/* ===================================================================
+            5A-TER. OVERLAY COMMESSA ZERO-CLICK (DRAG & DROP SU DESKTOP)
+        =================================================================== */}
+        {isDesktopFileDragging && (
+          <div className="no-print pointer-events-none fixed inset-0 z-[105] flex items-center justify-center p-6 bg-[#04070f]/75 backdrop-blur-md">
+            <div className="w-full max-w-xl rounded-3xl border-2 border-dashed border-amber-400/80 bg-[#0b1324]/92 px-8 py-12 text-center text-white shadow-2xl space-y-3">
+              <div className="w-14 h-14 rounded-2xl bg-amber-400/15 border border-amber-400/40 text-amber-300 flex items-center justify-center mx-auto">
+                <Upload className="w-7 h-7" />
+              </div>
+              <h3 className="text-xl font-semibold tracking-tight">
+                Rilascia qui per creare la Commessa Zero-Click
+              </h3>
+              <p className="text-xs text-slate-300 max-w-md mx-auto leading-relaxed">
+                PDF, Excel, CSV o foto di una bolla: METATRON estrae gli articoli, applica la memoria delle tue abitudini, prepara scatole e bancali bilanciati SX/DX, rileva i cartelli RAL e genera subito i QR.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {(zeroClickBusy || zeroClickError || zeroClickResult) && (
+          <div
+            className="no-print fixed inset-0 z-[108] flex items-center justify-center p-4 bg-[#04070f]/75 backdrop-blur-lg"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="w-full max-w-lg rounded-2xl border border-white/[0.15] bg-[#0b1220] text-white shadow-2xl overflow-hidden">
+              {zeroClickBusy && (
+                <div className="p-6 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-400/15 border border-amber-400/35 text-amber-300 flex items-center justify-center shrink-0">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-sm font-semibold text-white">
+                        Preparazione Commessa Zero-Click in corso
+                      </h3>
+                      <p className="text-xs text-slate-300 truncate mt-0.5">
+                        {zeroClickStage}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
+                    <div
+                      className="h-full bg-amber-400 transition-all duration-200"
+                      style={{ width: `${Math.max(8, zeroClickPct)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {!zeroClickBusy && zeroClickError && (
+                <div className="p-6 space-y-4">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <h3 className="text-sm font-semibold text-white">
+                        File non riconosciuto
+                      </h3>
+                      <p className="text-xs text-slate-300 leading-relaxed">
+                        {zeroClickError}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setZeroClickError(null)}
+                      className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold text-white cursor-pointer"
+                    >
+                      Chiudi
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {!zeroClickBusy && zeroClickResult && (
+                <div className="p-6 space-y-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium text-emerald-300 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Commessa Zero-Click pronta</span>
+                      </div>
+                      <h3 className="text-lg font-semibold text-white mt-1 truncate">
+                        <span className="font-mono">{zeroClickResult.load.code}</span> ·{' '}
+                        {zeroClickResult.load.title}
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-0.5 truncate">
+                        {zeroClickResult.load.client} · da {zeroClickResult.fileName}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setZeroClickResult(null)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center">
+                    <div className="rounded-xl bg-white/[0.05] border border-white/[0.08] py-2.5 px-2">
+                      <div className="text-lg font-bold font-mono tabular-nums text-white">
+                        {zeroClickResult.itemsCount}
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        Articoli ({zeroClickResult.totalPieces} pz)
+                      </div>
+                    </div>
+                    <div className="rounded-xl bg-white/[0.05] border border-white/[0.08] py-2.5 px-2">
+                      <div className="text-lg font-bold font-mono tabular-nums text-sky-300">
+                        {zeroClickResult.boxesCount}
+                      </div>
+                      <div className="text-[11px] text-slate-400">Scatole auto</div>
+                    </div>
+                    <div className="rounded-xl bg-white/[0.05] border border-white/[0.08] py-2.5 px-2">
+                      <div className="text-lg font-bold font-mono tabular-nums text-amber-300">
+                        {zeroClickResult.palletsCount}
+                      </div>
+                      <div className="text-[11px] text-slate-400">Bancali SX/DX</div>
+                    </div>
+                    <div className="rounded-xl bg-white/[0.05] border border-white/[0.08] py-2.5 px-2">
+                      <div className="text-lg font-bold font-mono tabular-nums text-emerald-300">
+                        {zeroClickResult.finishingTagsCount}
+                      </div>
+                      <div className="text-[11px] text-slate-400">Cartelli RAL</div>
+                    </div>
+                  </div>
+
+                  {zeroClickResult.matchedFromMemoryCount > 0 && (
+                    <div className="text-xs text-slate-300">
+                      Memoria locale applicata su{' '}
+                      <span className="font-mono font-semibold text-amber-300">
+                        {zeroClickResult.matchedFromMemoryCount}
+                      </span>{' '}
+                      articoli già riconosciuti dalle tue abitudini.
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-white/[0.08]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setZeroClickResult(null);
+                        openApp('truck');
+                      }}
+                      className="px-3 py-2 rounded-lg bg-white/[0.08] hover:bg-white/[0.15] text-xs font-medium text-white flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                    >
+                      <Truck className="w-3.5 h-3.5" />
+                      <span>Piano Camion</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setZeroClickResult(null);
+                        openApp('qr_labels');
+                      }}
+                      className="px-3 py-2 rounded-lg bg-white/[0.08] hover:bg-white/[0.15] text-xs font-medium text-white flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                    >
+                      <QrCode className="w-3.5 h-3.5" />
+                      <span>Stampa QR</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setZeroClickResult(null);
+                        openApp('checklist');
+                      }}
+                      className="px-4 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                    >
+                      <CheckSquare className="w-3.5 h-3.5" />
+                      <span>Apri Check-List</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ===================================================================
+            5A-BIS. AVVISO NOVITÀ METATRON 2.1 IN CENTRO SCHERMO AL PRIMO AVVIO
+        =================================================================== */}
+        {showWhatsNewModal && (
+          <WhatsNewShowcaseModal
+            userName={currentUser.name}
+            onClose={handleCloseWhatsNew}
+            onLaunchApp={(appId) => openApp(appId)}
+          />
         )}
 
         {/* ===================================================================
