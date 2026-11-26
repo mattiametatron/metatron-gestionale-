@@ -1,19 +1,28 @@
 import React from 'react';
+import auroraLuxeWallpaper from '../assets/images/metatron_aurora_luxe_wallpaper_1795676377940.jpg';
+import alpineTwilightWallpaper from '../assets/images/metatron_alpine_twilight_wallpaper_1795676378047.jpg';
+import obsidianGlassWallpaper from '../assets/images/metatron_studio_wallpaper_1795674482399.jpg';
 
 export type WallpaperTheme =
+  | 'aurora_luxe'
+  | 'alpine_twilight'
+  | 'obsidian_glass'
   | 'aurora_silk'
+  | 'daylight_clean'
   | 'midnight_violet'
-  | 'emerald_mist'
-  | 'daylight_clean';
+  | 'emerald_mist';
 
 export const WALLPAPER_META: Record<
   WallpaperTheme,
   { name: string; isLight?: boolean }
 > = {
-  aurora_silk: { name: 'Aurora Silk (Predefinito)' },
+  aurora_luxe: { name: 'Aurora Cristallo (Predefinito)' },
+  alpine_twilight: { name: 'Dolomiti al Tramonto' },
+  obsidian_glass: { name: 'Studio Ossidiana' },
+  aurora_silk: { name: 'Aurora Silk Classico' },
+  daylight_clean: { name: 'Chiaro Minimal', isLight: true },
   midnight_violet: { name: 'Notte Indaco' },
   emerald_mist: { name: 'Petrolio Smeraldo' },
-  daylight_clean: { name: 'Chiaro Minimal', isLight: true },
 };
 
 interface AuroraSilkWallpaperProps {
@@ -21,8 +30,85 @@ interface AuroraSilkWallpaperProps {
 }
 
 export const AuroraSilkWallpaper: React.FC<AuroraSilkWallpaperProps> = ({
-  theme = 'aurora_silk',
+  theme = 'aurora_luxe',
 }) => {
+  if (theme === 'aurora_luxe') {
+    return (
+      <div
+        aria-hidden="true"
+        className="no-print absolute inset-0 overflow-hidden pointer-events-none bg-[#060913]"
+        style={{
+          backgroundImage:
+            'radial-gradient(85% 75% at 65% 45%, #162244 0%, #090e1d 55%, #05070f 100%)',
+        }}
+      >
+        <img
+          src={auroraLuxeWallpaper}
+          alt=""
+          referrerPolicy="no-referrer"
+          className="absolute inset-0 w-full h-full object-cover object-center scale-[1.01]"
+        />
+        {/* Leggera sfumatura a sinistra per massima leggibilità delle icone */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              'linear-gradient(90deg, rgba(5, 8, 18, 0.44) 0%, rgba(5, 8, 18, 0.14) 44%, rgba(5, 8, 18, 0.12) 100%)',
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (theme === 'alpine_twilight') {
+    return (
+      <div
+        aria-hidden="true"
+        className="no-print absolute inset-0 overflow-hidden pointer-events-none bg-[#0a1322]"
+      >
+        <img
+          src={alpineTwilightWallpaper}
+          alt=""
+          referrerPolicy="no-referrer"
+          className="absolute inset-0 w-full h-full object-cover object-center scale-[1.01]"
+        />
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              'linear-gradient(90deg, rgba(8, 14, 28, 0.36) 0%, rgba(8, 14, 28, 0.08) 46%, rgba(8, 14, 28, 0.12) 100%)',
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (theme === 'obsidian_glass') {
+    return (
+      <div
+        aria-hidden="true"
+        className="no-print absolute inset-0 overflow-hidden pointer-events-none bg-[#080b12]"
+        style={{
+          backgroundImage:
+            'radial-gradient(85% 75% at 50% 20%, #131c2e 0%, #090d16 55%, #06080e 100%)',
+        }}
+      >
+        <img
+          src={obsidianGlassWallpaper}
+          alt=""
+          referrerPolicy="no-referrer"
+          className="absolute inset-0 w-full h-full object-cover object-center opacity-90 scale-[1.01]"
+        />
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              'linear-gradient(180deg, rgba(7, 10, 18, 0.46) 0%, rgba(7, 10, 18, 0.28) 48%, rgba(6, 8, 15, 0.62) 100%)',
+          }}
+        />
+      </div>
+    );
+  }
   if (theme === 'daylight_clean') {
     return (
       <div

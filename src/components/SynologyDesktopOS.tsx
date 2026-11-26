@@ -58,6 +58,7 @@ import {
   ShoppingCart,
 } from 'lucide-react';
 import { AuthUser, CargoLoad } from '../types/warehouse';
+import { DesktopAppIcon } from './DesktopAppIcon';
 import { LoadSummary } from '../utils/calculations';
 import { TutorialContextId } from '../data/appTutorials';
 import {
@@ -157,7 +158,7 @@ export const DESKTOP_MAIN_APPS: DesktopAppDefinition[] = [
     title: 'CaricoStudio — Suite Spedizioni & Logistica',
     shortTitle: 'CaricoStudio',
     subtitle: 'Commesse, Verniciatura & RAL, Bancali, Scatoloni, 3D, Camion e Firme',
-    iconBg: 'bg-gradient-to-b from-[#7b5cff] to-[#5737eb]',
+    iconBg: 'bg-gradient-to-b from-blue-600 to-blue-700',
     badgeText: (load) => load.code,
     icon: LayoutGrid,
   },
@@ -165,8 +166,8 @@ export const DESKTOP_MAIN_APPS: DesktopAppDefinition[] = [
     id: 'stock_movements',
     title: 'Carico & Scarico Materiale — Magazzino',
     shortTitle: 'Carico/Scarico',
-    subtitle: 'Commesse uscite/entrate, giacenze, movimenti, prove imballo 101%',
-    iconBg: 'bg-gradient-to-b from-[#54cc31] to-[#32a61c]',
+    subtitle: 'Movimenti entrata/uscita, giacenze e prove imballo 101%',
+    iconBg: 'bg-gradient-to-b from-emerald-600 to-emerald-700',
     badgeText: () => 'Magazzino',
     icon: Scan,
   },
@@ -174,8 +175,8 @@ export const DESKTOP_MAIN_APPS: DesktopAppDefinition[] = [
     id: 'commessa_photos',
     title: 'Foto Commesse — Fotocamera & Galleria',
     shortTitle: 'Foto',
-    subtitle: 'Album divisi per commessa stile Google Foto con scatto rapido da telefono',
-    iconBg: 'bg-gradient-to-b from-[#c84bff] to-[#9828e6]',
+    subtitle: 'Album fotografici per commessa con scatto rapido',
+    iconBg: 'bg-gradient-to-b from-slate-700 to-slate-800',
     badgeText: () => 'Galleria',
     icon: Camera,
   },
@@ -183,8 +184,8 @@ export const DESKTOP_MAIN_APPS: DesktopAppDefinition[] = [
     id: 'warehouse_catalog',
     title: 'Magazzino — Articoli, Scorte, Barcode & Preferiti',
     shortTitle: 'Magazzino',
-    subtitle: 'Carica/scarica come alla cassa con lettore a barre, foto, file, SKU, scorta minima e Preferiti',
-    iconBg: 'bg-gradient-to-b from-[#fb9518] to-[#e66c05]',
+    subtitle: 'Cassa lettore barcode, SKU, scorta minima e Preferiti',
+    iconBg: 'bg-gradient-to-b from-amber-600 to-amber-700',
     badgeText: () => 'Scorte',
     icon: Package,
   },
@@ -192,8 +193,8 @@ export const DESKTOP_MAIN_APPS: DesktopAppDefinition[] = [
     id: 'file_manager',
     title: 'File — Cartelle, PDF, Excel & Foto',
     shortTitle: 'File',
-    subtitle: "Crea e modifica cartelle, carica PDF, Excel, documenti o importa foto dall'App Foto",
-    iconBg: 'bg-gradient-to-b from-[#f59e0b] to-[#d97706]',
+    subtitle: 'Archivio cartelle, PDF, Excel e documenti aziendali',
+    iconBg: 'bg-gradient-to-b from-sky-600 to-sky-700',
     badgeText: () => 'Archivio',
     icon: FolderOpen,
   },
@@ -201,17 +202,17 @@ export const DESKTOP_MAIN_APPS: DesktopAppDefinition[] = [
     id: 'team_share',
     title: 'Scambio Team — Invio File & Foto tra Utenti',
     shortTitle: 'Scambio Team',
-    subtitle: 'Scambia direttamente file, PDF, Excel e foto con tutti gli utenti registrati e la Direzione',
-    iconBg: 'bg-gradient-to-b from-[#25b5ff] to-[#0b7be6]',
+    subtitle: 'Scambio file, PDF e foto con colleghi e Direzione',
+    iconBg: 'bg-gradient-to-b from-cyan-600 to-sky-700',
     badgeText: () => 'Team',
     icon: Send,
   },
   {
     id: 'employer_hub',
-    title: 'Portale Direzione — Tutti i Profili, Commesse e Movimenti',
+    title: 'Portale Direzione — Profili, Commesse e Movimenti',
     shortTitle: 'Direzione Team',
-    subtitle: 'Interfaccia riservata al Datore di Lavoro per controllare tutti i profili, commesse e carichi/scarichi',
-    iconBg: 'bg-gradient-to-b from-[#f5b726] to-[#d97706]',
+    subtitle: 'Controllo centralizzato profili, commesse e movimentazioni',
+    iconBg: 'bg-gradient-to-b from-amber-500 to-amber-700',
     badgeText: () => 'Direzione',
     icon: Crown,
   },
@@ -219,8 +220,8 @@ export const DESKTOP_MAIN_APPS: DesktopAppDefinition[] = [
     id: 'weather',
     title: 'Meteo — Previsioni Live Orarie e 7 Giorni',
     shortTitle: 'Meteo',
-    subtitle: 'Temperatura in tempo reale, vento, pioggia, previsioni orarie e città preferite',
-    iconBg: 'bg-gradient-to-b from-[#38bdf8] to-[#0284c7]',
+    subtitle: 'Temperatura live, vento, pioggia e previsioni 7 giorni',
+    iconBg: 'bg-gradient-to-b from-sky-500 to-blue-600',
     badgeText: () => 'Live',
     icon: CloudSun,
   },
@@ -228,44 +229,44 @@ export const DESKTOP_MAIN_APPS: DesktopAppDefinition[] = [
     id: 'clock',
     title: 'Orologio — Sveglie, Timer, Cronometro & Fusi Orari',
     shortTitle: 'Orologio',
-    subtitle: 'Orologio digitale e analogico, fusi orari nel mondo, sveglie sonore, timer e cronometro',
-    iconBg: 'bg-gradient-to-b from-[#6366f1] to-[#4338ca]',
+    subtitle: 'Fusi orari, sveglie sonore, timer e cronometro',
+    iconBg: 'bg-gradient-to-b from-slate-600 to-slate-800',
     badgeText: () => 'Ora',
     icon: ClockIcon,
   },
   {
     id: 'calendar',
-    title: 'Calendario — Appunti, Appuntamenti & Calendari Condivisi',
+    title: 'Calendario — Appunti, Appuntamenti & Condivisi',
     shortTitle: 'Calendario',
-    subtitle: 'Scrivi appunti giornalieri, appuntamenti e crea calendari condivisi con il team',
-    iconBg: 'bg-gradient-to-b from-[#f43f5e] to-[#be123c]',
+    subtitle: 'Appunti giornalieri, scadenze e calendari di reparto',
+    iconBg: 'bg-gradient-to-b from-rose-600 to-rose-700',
     badgeText: () => 'Condiviso',
     icon: CalendarIcon,
   },
   {
     id: 'server_monitor',
-    title: 'Monitor Risorse — CPU, RAM, Dischi, Rete & Servizi Server',
+    title: 'Monitor Risorse — CPU, RAM, Dischi & Rete Server',
     shortTitle: 'Monitor Server',
-    subtitle: 'Telemetria hardware live del nodo METATRON Server OS, carico core e interfacce LAN',
-    iconBg: 'bg-gradient-to-b from-[#10b981] to-[#047857]',
+    subtitle: 'Telemetria hardware live del server e rete LAN',
+    iconBg: 'bg-gradient-to-b from-teal-600 to-emerald-700',
     badgeText: () => 'HW Live',
     icon: Cpu,
   },
   {
     id: 'server_control',
-    title: 'Sistema & ISO — METATRON Server OS, Backup, Sessioni & Installer',
+    title: 'Sistema & ISO — METATRON Server OS & Backup',
     shortTitle: 'Sistema & ISO',
-    subtitle: 'Genera ISO avviabile da USB, installa su server Linux/Kiosk, snapshot backup, sessioni e log',
-    iconBg: 'bg-gradient-to-b from-[#334155] to-[#0f172a]',
+    subtitle: 'Backup automatici, snapshot, sessioni e installer',
+    iconBg: 'bg-gradient-to-b from-slate-700 to-slate-900',
     badgeText: () => 'OS',
     icon: Server,
   },
   {
     id: 'software_updates',
-    title: 'Aggiornamenti — Controllo Versioni, Download & Riavvio Sicuro',
+    title: 'Aggiornamenti — Controllo Versioni & Riavvio Sicuro',
     shortTitle: 'Aggiornamenti',
-    subtitle: 'Controlla e installa nuove versioni di METATRON con backup automatico e zero perdita dati',
-    iconBg: 'bg-gradient-to-b from-[#06b6d4] to-[#0369a1]',
+    subtitle: 'Nuove release METATRON con protezione dati garantita',
+    iconBg: 'bg-gradient-to-b from-blue-600 to-indigo-700',
     badgeText: () => 'Update',
     icon: DownloadCloud,
   },
@@ -273,35 +274,35 @@ export const DESKTOP_MAIN_APPS: DesktopAppDefinition[] = [
     id: 'ddt_documents',
     title: 'DDT & Bolle — Documenti di Trasporto PDF & Firme',
     shortTitle: 'DDT & Bolle',
-    subtitle: 'Genera DDT conformi in PDF A4 da commessa con numerazione progressiva, colli, pesi e firme',
-    iconBg: 'bg-gradient-to-b from-[#2563eb] to-[#1d4ed8]',
+    subtitle: 'Documenti di trasporto A4 con numerazione e firme digitali',
+    iconBg: 'bg-gradient-to-b from-blue-700 to-slate-900',
     badgeText: () => 'PDF A4',
     icon: FileText,
   },
   {
     id: 'crm_directory',
-    title: 'Clienti & Fornitori — Anagrafica & Storico Aziendale',
+    title: 'Clienti & Fornitori — Anagrafica & Storico',
     shortTitle: 'Clienti & Forn.',
-    subtitle: 'Rubrica centralizzata con indirizzi di scarico, P.IVA, corrieri e storico commesse/ordini',
-    iconBg: 'bg-gradient-to-b from-[#8b5cf6] to-[#6d28d9]',
+    subtitle: 'Indirizzi di scarico, P.IVA, corrieri e storico commesse',
+    iconBg: 'bg-gradient-to-b from-indigo-600 to-slate-800',
     badgeText: () => 'Rubrica',
     icon: Building2,
   },
   {
     id: 'purchase_orders',
-    title: 'Ordini Fornitori — Riordino Automatico Scorte & Carico',
+    title: 'Ordini Fornitori — Riordino Scorte & Carico',
     shortTitle: 'Ordini Forn.',
-    subtitle: 'Riordina automaticamente gli articoli sotto scorta, invia ordini PDF e carica in magazzino',
-    iconBg: 'bg-gradient-to-b from-[#059669] to-[#047857]',
+    subtitle: 'Riordino automatico sotto scorta, PDF e carico magazzino',
+    iconBg: 'bg-gradient-to-b from-emerald-700 to-teal-800',
     badgeText: () => 'Acquisti',
     icon: ShoppingCart,
   },
   {
     id: 'timini_print',
-    title: 'TiMini Print — Stampante Etichette Termiche 57mm Bluetooth',
+    title: 'TiMini Print — Stampante Etichette Termiche 57mm',
     shortTitle: 'TiMini Print',
-    subtitle: 'Stampa etichette con QR, Barcode e loghi direttamente via Bluetooth BLE su stampanti TiMini / Tiny Print',
-    iconBg: 'bg-gradient-to-b from-[#ec4899] to-[#be185d]',
+    subtitle: 'Stampa etichette 57mm QR, Barcode e loghi via Bluetooth BLE',
+    iconBg: 'bg-gradient-to-b from-slate-800 to-slate-950',
     badgeText: () => '57mm BLE',
     icon: Printer,
   },
@@ -314,8 +315,8 @@ export const CARICOSTUDIO_SUB_APPS: SynologyAppDefinition[] = [
     shortTitle: 'Commesse',
     subtitle: 'Archivio commesse, clienti, salvataggio file PC e backup',
     category: 'documenti',
-    gradient: 'from-sky-500 to-blue-700',
-    iconBg: 'bg-gradient-to-br from-sky-400 via-blue-600 to-indigo-700',
+    gradient: 'from-sky-600 to-blue-700',
+    iconBg: 'bg-gradient-to-b from-sky-600 to-blue-700',
     badgeText: (load) => load.code,
     icon: FolderOpen,
   },
@@ -325,8 +326,8 @@ export const CARICOSTUDIO_SUB_APPS: SynologyAppDefinition[] = [
     shortTitle: 'Verniciatura & RAL',
     subtitle: 'Layout cartello A4 in app, RAL, Zincato a caldo ed Elettrozincato',
     category: 'produzione',
-    gradient: 'from-amber-500 to-orange-600',
-    iconBg: 'bg-gradient-to-br from-amber-400 via-orange-500 to-red-600',
+    gradient: 'from-amber-600 to-orange-700',
+    iconBg: 'bg-gradient-to-b from-amber-600 to-orange-700',
     badgeText: (load) =>
       (load.finishingTags?.length || 0) > 0
         ? `${load.finishingTags?.length} Cartelli`
@@ -339,8 +340,8 @@ export const CARICOSTUDIO_SUB_APPS: SynologyAppDefinition[] = [
     shortTitle: 'Pesi Bancali',
     subtitle: 'Inserisci i pesi a bilancia e stampa i fogli A4 per ogni bancale',
     category: 'produzione',
-    gradient: 'from-emerald-500 to-teal-700',
-    iconBg: 'bg-gradient-to-br from-emerald-400 via-teal-600 to-cyan-700',
+    gradient: 'from-emerald-600 to-teal-700',
+    iconBg: 'bg-gradient-to-b from-emerald-600 to-teal-700',
     badgeText: (_, summary) => `${summary.totalPallets} Bancali`,
     icon: Scale,
   },
@@ -350,8 +351,8 @@ export const CARICOSTUDIO_SUB_APPS: SynologyAppDefinition[] = [
     shortTitle: 'Albero Bancali',
     subtitle: 'Gestione bancali, scatole su misura, sotto-scatole e foto',
     category: 'logistica',
-    gradient: 'from-indigo-500 to-violet-700',
-    iconBg: 'bg-gradient-to-br from-indigo-500 via-purple-600 to-violet-800',
+    gradient: 'from-blue-600 to-blue-800',
+    iconBg: 'bg-gradient-to-b from-blue-600 to-blue-800',
     badgeText: (_, summary) =>
       `${summary.totalPallets}B · ${summary.totalBoxes}S`,
     icon: GitBranch,
@@ -362,8 +363,8 @@ export const CARICOSTUDIO_SUB_APPS: SynologyAppDefinition[] = [
     shortTitle: 'Check-list Merci',
     subtitle: 'Distinta articoli, foto pezzi, spunta carico e creazione Kit',
     category: 'logistica',
-    gradient: 'from-blue-500 to-cyan-600',
-    iconBg: 'bg-gradient-to-br from-blue-500 via-blue-600 to-cyan-600',
+    gradient: 'from-sky-500 to-blue-700',
+    iconBg: 'bg-gradient-to-b from-sky-500 to-blue-700',
     badgeText: (_, summary) =>
       `${summary.checkedItems}/${summary.totalItems} Art.`,
     icon: CheckSquare,
@@ -374,8 +375,8 @@ export const CARICOSTUDIO_SUB_APPS: SynologyAppDefinition[] = [
     shortTitle: 'CAD 3D Bancali',
     subtitle: 'Vista 3D interattiva a piani, ispezione sotto-scatole e guida',
     category: 'logistica',
-    gradient: 'from-fuchsia-500 to-purple-700',
-    iconBg: 'bg-gradient-to-br from-fuchsia-500 via-purple-600 to-indigo-800',
+    gradient: 'from-slate-700 to-slate-900',
+    iconBg: 'bg-gradient-to-b from-slate-700 to-slate-900',
     badgeText: () => '3D CAD',
     icon: Box,
   },
@@ -385,8 +386,8 @@ export const CARICOSTUDIO_SUB_APPS: SynologyAppDefinition[] = [
     shortTitle: 'Carico Camion',
     subtitle: 'Posizionamento bancali sul camion e bilanciamento pesi SX/DX',
     category: 'logistica',
-    gradient: 'from-teal-500 to-emerald-700',
-    iconBg: 'bg-gradient-to-br from-teal-400 via-emerald-600 to-green-700',
+    gradient: 'from-teal-600 to-emerald-700',
+    iconBg: 'bg-gradient-to-b from-teal-600 to-emerald-700',
     badgeText: (load, summary) =>
       `${summary.totalPallets}/${load.vehicleMaxPallets} Posti`,
     icon: Truck,
@@ -397,8 +398,8 @@ export const CARICOSTUDIO_SUB_APPS: SynologyAppDefinition[] = [
     shortTitle: 'Firme & Bolla',
     subtitle: 'Convalida digitale Operatore, Responsabile Logistica e Autista',
     category: 'documenti',
-    gradient: 'from-rose-500 to-pink-700',
-    iconBg: 'bg-gradient-to-br from-rose-500 via-pink-600 to-purple-700',
+    gradient: 'from-rose-600 to-rose-800',
+    iconBg: 'bg-gradient-to-b from-rose-600 to-rose-800',
     badgeText: (load) => `${load.signatures?.length || 0}/3 Firme`,
     icon: PenTool,
   },
@@ -408,8 +409,8 @@ export const CARICOSTUDIO_SUB_APPS: SynologyAppDefinition[] = [
     shortTitle: 'Etichette QR A4',
     subtitle: 'Foglio A4 con tutte le etichette per bancali, scatole e pezzi con carico/scarico',
     category: 'documenti',
-    gradient: 'from-slate-700 to-slate-900',
-    iconBg: 'bg-gradient-to-br from-slate-700 via-slate-800 to-slate-950',
+    gradient: 'from-slate-800 to-slate-950',
+    iconBg: 'bg-gradient-to-b from-slate-800 to-slate-950',
     badgeText: (load) =>
       `${load.pallets.length + load.boxes.length + load.items.length} Etich.`,
     icon: QrCode,
@@ -418,10 +419,14 @@ export const CARICOSTUDIO_SUB_APPS: SynologyAppDefinition[] = [
 
 export const SYNOLOGY_APPS = CARICOSTUDIO_SUB_APPS;
 
+type StudioCategoryId = 'logistica' | 'magazzino' | 'team' | 'sistema';
+
 interface DesktopShortcutItem {
   id: string;
   label: string;
   title: string;
+  shortDesc?: string;
+  studioGroup?: StudioCategoryId;
   iconBg: string;
   icon: React.ComponentType<{ className?: string }>;
   windowId?: DesktopWindowId;
@@ -429,12 +434,21 @@ interface DesktopShortcutItem {
   subAppId?: CaricoStudioSubAppId;
 }
 
+const STUDIO_CATEGORY_META: { id: StudioCategoryId; title: string; shortLabel: string }[] = [
+  { id: 'logistica', title: 'Logistica & Spedizioni', shortLabel: 'Logistica' },
+  { id: 'magazzino', title: 'Magazzino & Commerciale', shortLabel: 'Magazzino' },
+  { id: 'team', title: 'Archivio & Collaborazione', shortLabel: 'Archivio & Team' },
+  { id: 'sistema', title: 'Sistema & Strumenti', shortLabel: 'Sistema' },
+];
+
 const DESKTOP_COLUMN_1: DesktopShortcutItem[] = [
   {
     id: 'caricostudio',
     label: 'CaricoStudio',
     title: 'CaricoStudio — Suite Spedizioni & Logistica',
-    iconBg: 'bg-gradient-to-b from-[#7b5cff] to-[#5737eb]',
+    shortDesc: 'Suite completa spedizioni',
+    studioGroup: 'logistica',
+    iconBg: 'bg-gradient-to-b from-blue-600 to-blue-700',
     icon: LayoutGrid,
     windowId: 'caricostudio',
     action: 'open_caricostudio_home',
@@ -443,7 +457,9 @@ const DESKTOP_COLUMN_1: DesktopShortcutItem[] = [
     id: 'commesse',
     label: 'Commesse',
     title: 'Gestione Commesse & Archivio Clienti',
-    iconBg: 'bg-gradient-to-b from-[#2da4f9] to-[#1778e6]',
+    shortDesc: 'Cartelle e archivio lavori',
+    studioGroup: 'logistica',
+    iconBg: 'bg-gradient-to-b from-sky-600 to-blue-700',
     icon: FolderOpen,
     windowId: 'caricostudio',
     subAppId: 'commesse',
@@ -453,7 +469,9 @@ const DESKTOP_COLUMN_1: DesktopShortcutItem[] = [
     id: 'qr_labels',
     label: 'Etichette QR',
     title: 'Etichette A4 QR & Codice a Barre',
-    iconBg: 'bg-gradient-to-b from-[#17b890] to-[#0a8f71]',
+    shortDesc: 'Fogli A4 QR e barcode',
+    studioGroup: 'logistica',
+    iconBg: 'bg-gradient-to-b from-teal-600 to-emerald-700',
     icon: QrCode,
     windowId: 'caricostudio',
     subAppId: 'qr_labels',
@@ -463,7 +481,9 @@ const DESKTOP_COLUMN_1: DesktopShortcutItem[] = [
     id: 'file_manager',
     label: 'File',
     title: 'Archivio File — Cartelle, PDF, Excel e Foto',
-    iconBg: 'bg-gradient-to-b from-[#f59e0b] to-[#d97706]',
+    shortDesc: 'Cartelle, PDF ed Excel',
+    studioGroup: 'team',
+    iconBg: 'bg-gradient-to-b from-sky-600 to-sky-700',
     icon: FolderOpen,
     windowId: 'file_manager',
     action: 'open_window',
@@ -472,7 +492,9 @@ const DESKTOP_COLUMN_1: DesktopShortcutItem[] = [
     id: 'stock_movements',
     label: 'Carico/Scarico',
     title: 'Carico & Scarico Materiale — Magazzino',
-    iconBg: 'bg-gradient-to-b from-[#54cc31] to-[#32a61c]',
+    shortDesc: 'Movimenti entrata e uscita',
+    studioGroup: 'magazzino',
+    iconBg: 'bg-gradient-to-b from-emerald-600 to-emerald-700',
     icon: Scan,
     windowId: 'stock_movements',
     action: 'open_window',
@@ -481,7 +503,9 @@ const DESKTOP_COLUMN_1: DesktopShortcutItem[] = [
     id: 'commessa_photos',
     label: 'Foto',
     title: 'Foto Commesse — Fotocamera & Galleria',
-    iconBg: 'bg-gradient-to-b from-[#c84bff] to-[#9828e6]',
+    shortDesc: 'Galleria foto per commessa',
+    studioGroup: 'team',
+    iconBg: 'bg-gradient-to-b from-slate-700 to-slate-800',
     icon: Camera,
     windowId: 'commessa_photos',
     action: 'open_window',
@@ -490,7 +514,9 @@ const DESKTOP_COLUMN_1: DesktopShortcutItem[] = [
     id: 'checklist',
     label: 'Check-list',
     title: 'Check-list Merci, Foto & Kit',
-    iconBg: 'bg-gradient-to-b from-[#f23d52] to-[#d61c36]',
+    shortDesc: 'Distinta e spunta articoli',
+    studioGroup: 'logistica',
+    iconBg: 'bg-gradient-to-b from-rose-600 to-rose-700',
     icon: CheckSquare,
     windowId: 'caricostudio',
     subAppId: 'checklist',
@@ -500,7 +526,9 @@ const DESKTOP_COLUMN_1: DesktopShortcutItem[] = [
     id: 'tree',
     label: 'Bancali',
     title: 'Albero Bancali, Scatoloni & Fuori Scatola',
-    iconBg: 'bg-gradient-to-b from-[#15b58a] to-[#0b8a6a]',
+    shortDesc: 'Albero bancali e scatole',
+    studioGroup: 'logistica',
+    iconBg: 'bg-gradient-to-b from-emerald-600 to-teal-700',
     icon: GitBranch,
     windowId: 'caricostudio',
     subAppId: 'tree',
@@ -513,7 +541,9 @@ const DESKTOP_COLUMN_2: DesktopShortcutItem[] = [
     id: 'warehouse_catalog',
     label: 'Magazzino',
     title: 'Magazzino — Cassa Lettore Barcode, Articoli, Scorte, Foto & Preferiti',
-    iconBg: 'bg-gradient-to-b from-[#fb9518] to-[#e66c05]',
+    shortDesc: 'Catalogo scorte e lettore',
+    studioGroup: 'magazzino',
+    iconBg: 'bg-gradient-to-b from-amber-600 to-amber-700',
     icon: Package,
     windowId: 'warehouse_catalog',
     action: 'open_window',
@@ -522,7 +552,9 @@ const DESKTOP_COLUMN_2: DesktopShortcutItem[] = [
     id: 'pallet_weights',
     label: 'Pesi Bancali',
     title: 'Pesi Bancali & Schede Collo A4',
-    iconBg: 'bg-gradient-to-b from-[#1b9ef5] to-[#0c78d1]',
+    shortDesc: 'Bilancia e schede collo',
+    studioGroup: 'logistica',
+    iconBg: 'bg-gradient-to-b from-blue-600 to-sky-700',
     icon: Scale,
     windowId: 'caricostudio',
     subAppId: 'pallet_weights',
@@ -532,7 +564,9 @@ const DESKTOP_COLUMN_2: DesktopShortcutItem[] = [
     id: 'painting_tags',
     label: 'Verniciatura',
     title: 'Verniciatura, RAL & Zincatura (Cartelli A4)',
-    iconBg: 'bg-gradient-to-b from-[#5c6878] to-[#3e4856]',
+    shortDesc: 'Cartelli RAL e zincatura',
+    studioGroup: 'logistica',
+    iconBg: 'bg-gradient-to-b from-amber-600 to-orange-700',
     icon: Paintbrush,
     windowId: 'caricostudio',
     subAppId: 'painting_tags',
@@ -542,7 +576,9 @@ const DESKTOP_COLUMN_2: DesktopShortcutItem[] = [
     id: 'view3d',
     label: 'CAD 3D',
     title: 'CAD 3D Stivaggio Bancali & Raggi X',
-    iconBg: 'bg-gradient-to-b from-[#505d72] to-[#353f52]',
+    shortDesc: 'Stivaggio 3D e raggi X',
+    studioGroup: 'logistica',
+    iconBg: 'bg-gradient-to-b from-slate-600 to-slate-800',
     icon: Layers,
     windowId: 'caricostudio',
     subAppId: 'view3d',
@@ -552,7 +588,9 @@ const DESKTOP_COLUMN_2: DesktopShortcutItem[] = [
     id: 'print_center',
     label: 'Stampe',
     title: 'Centro Stampe Etichette e Distinte',
-    iconBg: 'bg-gradient-to-b from-[#555e7a] to-[#384059]',
+    shortDesc: 'Distinte e fogli A4',
+    studioGroup: 'logistica',
+    iconBg: 'bg-gradient-to-b from-slate-700 to-slate-900',
     icon: Printer,
     action: 'open_print',
   },
@@ -560,7 +598,9 @@ const DESKTOP_COLUMN_2: DesktopShortcutItem[] = [
     id: 'team_share',
     label: 'Scambio Team',
     title: 'Scambio Team — Invia e ricevi file e foto tra colleghi',
-    iconBg: 'bg-gradient-to-b from-[#25b5ff] to-[#0b7be6]',
+    shortDesc: 'Invio file e foto team',
+    studioGroup: 'team',
+    iconBg: 'bg-gradient-to-b from-cyan-600 to-sky-700',
     icon: Send,
     windowId: 'team_share',
     action: 'open_window',
@@ -572,7 +612,9 @@ const DESKTOP_COLUMN_3: DesktopShortcutItem[] = [
     id: 'calendar',
     label: 'Calendario',
     title: 'Calendario — Appunti, Appuntamenti e Calendari Condivisi col Team',
-    iconBg: 'bg-gradient-to-b from-[#f43f5e] to-[#be123c]',
+    shortDesc: 'Appunti e agenda team',
+    studioGroup: 'team',
+    iconBg: 'bg-gradient-to-b from-rose-600 to-rose-700',
     icon: CalendarIcon,
     windowId: 'calendar',
     action: 'open_window',
@@ -581,7 +623,9 @@ const DESKTOP_COLUMN_3: DesktopShortcutItem[] = [
     id: 'weather',
     label: 'Meteo',
     title: 'Meteo — Previsioni live orarie e settimanali',
-    iconBg: 'bg-gradient-to-b from-[#38bdf8] to-[#0284c7]',
+    shortDesc: 'Previsioni live 7 giorni',
+    studioGroup: 'sistema',
+    iconBg: 'bg-gradient-to-b from-sky-500 to-blue-600',
     icon: CloudSun,
     windowId: 'weather',
     action: 'open_window',
@@ -590,7 +634,9 @@ const DESKTOP_COLUMN_3: DesktopShortcutItem[] = [
     id: 'clock',
     label: 'Orologio',
     title: 'Orologio — Fusi orari, Sveglie, Timer e Cronometro',
-    iconBg: 'bg-gradient-to-b from-[#6366f1] to-[#4338ca]',
+    shortDesc: 'Sveglie, timer e fusi',
+    studioGroup: 'sistema',
+    iconBg: 'bg-gradient-to-b from-slate-600 to-slate-800',
     icon: ClockIcon,
     windowId: 'clock',
     action: 'open_window',
@@ -599,7 +645,9 @@ const DESKTOP_COLUMN_3: DesktopShortcutItem[] = [
     id: 'server_monitor',
     label: 'Monitor Server',
     title: 'Monitor Risorse Server — CPU, RAM, Dischi, Rete e Servizi',
-    iconBg: 'bg-gradient-to-b from-[#10b981] to-[#047857]',
+    shortDesc: 'CPU, RAM e stato rete',
+    studioGroup: 'sistema',
+    iconBg: 'bg-gradient-to-b from-teal-600 to-emerald-700',
     icon: Cpu,
     windowId: 'server_monitor',
     action: 'open_window',
@@ -608,7 +656,9 @@ const DESKTOP_COLUMN_3: DesktopShortcutItem[] = [
     id: 'server_control',
     label: 'Sistema & ISO',
     title: 'METATRON Server OS — Installer Linux, Generatore ISO USB, Backup e Log',
-    iconBg: 'bg-gradient-to-b from-[#334155] to-[#0f172a]',
+    shortDesc: 'Backup, ISO e sistema',
+    studioGroup: 'sistema',
+    iconBg: 'bg-gradient-to-b from-slate-700 to-slate-900',
     icon: Server,
     windowId: 'server_control',
     action: 'open_window',
@@ -617,7 +667,9 @@ const DESKTOP_COLUMN_3: DesktopShortcutItem[] = [
     id: 'software_updates',
     label: 'Aggiornamenti',
     title: 'Aggiornamenti METATRON — Verifica, scarica e riavvia senza perdere i dati',
-    iconBg: 'bg-gradient-to-b from-[#06b6d4] to-[#0369a1]',
+    shortDesc: 'Versioni e aggiornamenti',
+    studioGroup: 'sistema',
+    iconBg: 'bg-gradient-to-b from-blue-600 to-indigo-700',
     icon: DownloadCloud,
     windowId: 'software_updates',
     action: 'open_window',
@@ -629,7 +681,9 @@ const DESKTOP_COLUMN_4: DesktopShortcutItem[] = [
     id: 'ddt_documents',
     label: 'DDT & Bolle',
     title: 'DDT & Bolle di Trasporto — Generatore PDF A4 con numerazione e firme digitali',
-    iconBg: 'bg-gradient-to-b from-[#2563eb] to-[#1d4ed8]',
+    shortDesc: 'Bolle A4 e firme digitali',
+    studioGroup: 'magazzino',
+    iconBg: 'bg-gradient-to-b from-blue-700 to-slate-900',
     icon: FileText,
     windowId: 'ddt_documents',
     action: 'open_window',
@@ -638,7 +692,9 @@ const DESKTOP_COLUMN_4: DesktopShortcutItem[] = [
     id: 'crm_directory',
     label: 'Clienti & Forn.',
     title: 'Anagrafica Clienti & Fornitori — Indirizzi, P.IVA, corrieri e storico',
-    iconBg: 'bg-gradient-to-b from-[#8b5cf6] to-[#6d28d9]',
+    shortDesc: 'Rubrica e storico azienda',
+    studioGroup: 'magazzino',
+    iconBg: 'bg-gradient-to-b from-indigo-600 to-slate-800',
     icon: Building2,
     windowId: 'crm_directory',
     action: 'open_window',
@@ -647,7 +703,9 @@ const DESKTOP_COLUMN_4: DesktopShortcutItem[] = [
     id: 'purchase_orders',
     label: 'Ordini Forn.',
     title: 'Ordini Fornitori & Riordino Automatico Scorte — PDF e carico rapido in magazzino',
-    iconBg: 'bg-gradient-to-b from-[#059669] to-[#047857]',
+    shortDesc: 'Riordino scorte e PDF',
+    studioGroup: 'magazzino',
+    iconBg: 'bg-gradient-to-b from-emerald-700 to-teal-800',
     icon: ShoppingCart,
     windowId: 'purchase_orders',
     action: 'open_window',
@@ -656,7 +714,9 @@ const DESKTOP_COLUMN_4: DesktopShortcutItem[] = [
     id: 'timini_print',
     label: 'TiMini Print',
     title: 'TiMini Print — Stampante Etichette Termiche 57mm Bluetooth & USB',
-    iconBg: 'bg-gradient-to-b from-[#ec4899] to-[#be185d]',
+    shortDesc: 'Etichette 57mm Bluetooth',
+    studioGroup: 'magazzino',
+    iconBg: 'bg-gradient-to-b from-slate-800 to-slate-950',
     icon: Printer,
     windowId: 'timini_print',
     action: 'open_window',
@@ -667,7 +727,9 @@ const EMPLOYER_ONLY_SHORTCUT: DesktopShortcutItem = {
   id: 'employer_hub',
   label: 'Direzione Team',
   title: 'Portale Direzione — Controllo profili, commesse e carichi/scarichi',
-  iconBg: 'bg-gradient-to-b from-[#f5b726] to-[#d97706]',
+  shortDesc: 'Supervisione profili e lavori',
+  studioGroup: 'team',
+  iconBg: 'bg-gradient-to-b from-amber-500 to-amber-700',
   icon: Crown,
   windowId: 'employer_hub',
   action: 'open_window',
@@ -696,10 +758,10 @@ interface DesktopGridPos {
   row: number;
 }
 
-const DESKTOP_GRID_ORIGIN_X = 16;
-const DESKTOP_GRID_ORIGIN_Y = 16;
-const DESKTOP_GRID_CELL_W = 88;
-const DESKTOP_GRID_CELL_H = 88;
+const DESKTOP_GRID_ORIGIN_X = 24;
+const DESKTOP_GRID_ORIGIN_Y = 22;
+const DESKTOP_GRID_CELL_W = 94;
+const DESKTOP_GRID_CELL_H = 96;
 
 function getDefaultDesktopPositions(isEmployer: boolean): Record<string, DesktopGridPos> {
   const map: Record<string, DesktopGridPos> = {};
@@ -833,40 +895,40 @@ export const CommesseFileStation: React.FC<CommesseFileStationProps> = ({
   };
 
   return (
-    <div className="h-full flex flex-col bg-slate-50 overflow-hidden">
-      {/* File Station Toolbar */}
-      <div className="bg-white border-b border-slate-200 px-5 py-3 flex flex-wrap items-center justify-between gap-3 shrink-0">
-        <div className="flex items-center gap-2">
+    <div className="h-full flex flex-col bg-[#F5F7FA] overflow-hidden rounded-xl border border-slate-200/90">
+      {/* Toolbar pulita */}
+      <div className="bg-white border-b border-slate-200/80 px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={onOpenNewLoadModal}
-            className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-xs cursor-pointer transition-colors"
+            className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium rounded-lg flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap"
           >
-            <FolderPlus className="w-4 h-4" />
-            <span>+ Nuova Commessa</span>
+            <FolderPlus className="w-3.5 h-3.5" />
+            <span>Nuova Commessa</span>
           </button>
 
           <button
             type="button"
             onClick={onDuplicateLoad}
-            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition-colors"
+            className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-medium rounded-lg flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap"
           >
-            <Copy className="w-3.5 h-3.5 text-slate-600" />
-            <span>Duplica Commessa</span>
+            <Copy className="w-3.5 h-3.5 text-slate-500" />
+            <span>Duplica</span>
           </button>
 
           <button
             type="button"
             onClick={onSaveToFolder}
-            className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition-colors"
+            className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-medium rounded-lg flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap"
           >
-            <FolderDown className="w-3.5 h-3.5 text-emerald-700" />
-            <span>Salva su PC (.json)</span>
+            <FolderDown className="w-3.5 h-3.5 text-slate-500" />
+            <span>Salva JSON</span>
           </button>
 
-          <label className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition-colors">
-            <Upload className="w-3.5 h-3.5 text-blue-600" />
-            <span>Apri File da PC</span>
+          <label className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-medium rounded-lg flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap">
+            <Upload className="w-3.5 h-3.5 text-slate-500" />
+            <span>Importa</span>
             <input
               type="file"
               accept=".json"
@@ -878,10 +940,10 @@ export const CommesseFileStation: React.FC<CommesseFileStationProps> = ({
           <button
             type="button"
             onClick={onExportCSV}
-            className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition-colors"
+            className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-medium rounded-lg flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap"
           >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Esporta Excel CSV</span>
+            <FileSpreadsheet className="w-3.5 h-3.5 text-slate-500" />
+            <span>CSV</span>
           </button>
         </div>
 
@@ -892,24 +954,24 @@ export const CommesseFileStation: React.FC<CommesseFileStationProps> = ({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Cerca commessa o cliente..."
-            className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-100 border border-slate-300 rounded-xl focus:bg-white focus:outline-none focus:border-blue-600"
+            className="w-full pl-8 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400 transition-colors"
           />
         </div>
       </div>
 
       {/* Main Split Body */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-5 p-5 overflow-y-auto min-h-0">
-        {/* Left: Lista Commesse (File Station Folders) */}
-        <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 shadow-xs flex flex-col overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-            <span className="text-xs font-black uppercase tracking-wider text-slate-700">
-              Cartelle Commesse ({filteredLoads.length})
+        {/* Left: Lista Commesse */}
+        <div className="lg:col-span-5 bg-white rounded-xl border border-slate-200/90 flex flex-col overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-800">
+              Cartelle Commesse
             </span>
-            <span className="text-[11px] text-slate-500 font-medium">
-              Clicca per attivare
+            <span className="text-xs text-slate-400 font-mono tabular-nums">
+              {filteredLoads.length}
             </span>
           </div>
-          <div className="flex-1 overflow-y-auto divide-y divide-slate-100 p-2 space-y-1">
+          <div className="flex-1 overflow-y-auto divide-y divide-slate-100 p-2 space-y-0.5">
             {filteredLoads.map((item) => {
               const isSelected = item.id === activeLoad.id;
               return (
@@ -917,51 +979,48 @@ export const CommesseFileStation: React.FC<CommesseFileStationProps> = ({
                   key={item.id}
                   type="button"
                   onClick={() => onSelectLoad(item.id)}
-                  className={`w-full p-3 rounded-xl text-left transition-all flex items-center justify-between gap-3 cursor-pointer ${
+                  className={`w-full px-3 py-2.5 rounded-lg text-left transition-colors flex items-center justify-between gap-3 cursor-pointer ${
                     isSelected
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'hover:bg-slate-100 text-slate-800'
+                      ? 'bg-slate-900 text-white'
+                      : 'hover:bg-slate-50 text-slate-800'
                   }`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div
-                      className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                         isSelected
-                          ? 'bg-white/20 text-white'
-                          : 'bg-blue-50 text-blue-600 border border-blue-200'
+                          ? 'bg-white/15 text-white'
+                          : 'bg-slate-100 text-slate-600'
                       }`}
                     >
-                      <FolderOpen className="w-5 h-5" />
+                      <FolderOpen className="w-4 h-4" />
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span
-                          className={`font-mono text-xs font-black px-1.5 py-0.5 rounded ${
-                            isSelected
-                              ? 'bg-blue-800 text-white'
-                              : 'bg-slate-100 text-blue-700'
+                          className={`font-mono text-xs font-semibold tabular-nums ${
+                            isSelected ? 'text-blue-300' : 'text-slate-900'
                           }`}
                         >
                           {item.code}
                         </span>
-                        <span className="text-xs font-extrabold truncate">
+                        <span className="text-xs font-medium truncate">
                           {item.title}
                         </span>
                       </div>
                       <div
-                        className={`text-[11px] mt-0.5 truncate ${
-                          isSelected ? 'text-blue-100' : 'text-slate-500'
+                        className={`text-[11px] mt-0.5 truncate tabular-nums ${
+                          isSelected ? 'text-slate-300' : 'text-slate-500'
                         }`}
                       >
-                        Cliente: {item.client || 'N/D'} · {item.pallets.length}{' '}
-                        bancali · {item.boxes.length} scatole ·{' '}
-                        {item.finishingTags?.length || 0} cartelli RAL
+                        {item.client || 'Nessun cliente'} · {item.pallets.length} bancali ·{' '}
+                        {item.boxes.length} scatole
                       </div>
                     </div>
                   </div>
                   <ChevronRight
                     className={`w-4 h-4 shrink-0 ${
-                      isSelected ? 'text-white' : 'text-slate-400'
+                      isSelected ? 'text-slate-300' : 'text-slate-300'
                     }`}
                   />
                 </button>
@@ -970,107 +1029,97 @@ export const CommesseFileStation: React.FC<CommesseFileStationProps> = ({
           </div>
         </div>
 
-        {/* Right: Dettagli Commessa Attiva & Collegamenti Rapidi App */}
+        {/* Right: Dettagli Commessa Attiva */}
         <div className="lg:col-span-7 space-y-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div>
-                <span className="text-[10px] font-black uppercase tracking-widest text-blue-600">
-                  COMMESSA SELEZIONATA
-                </span>
-                <h3 className="text-lg font-black text-slate-900">
-                  {activeLoad.code} — {activeLoad.title}
+          <div className="bg-white rounded-xl border border-slate-200/90 p-5 space-y-5">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
+              <div className="min-w-0">
+                <div className="text-xs text-slate-500">Commessa attiva</div>
+                <h3 className="text-base font-semibold text-slate-900 mt-0.5 truncate">
+                  <span className="font-mono">{activeLoad.code}</span> — {activeLoad.title}
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={onClearCurrentLoad}
-                className="px-3 py-1.5 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl flex items-center gap-1.5 cursor-pointer"
+                className="px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 border border-slate-200 rounded-lg flex items-center gap-1.5 shrink-0 cursor-pointer transition-colors"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>Svuota Commessa</span>
+                <span>Svuota</span>
               </button>
             </div>
 
             <form
               onSubmit={handleSaveRename}
-              className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end bg-slate-50 p-3.5 rounded-xl border border-slate-200"
+              className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end"
             >
               <div className="sm:col-span-3">
-                <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                  Codice Commessa
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  Codice
                 </label>
                 <input
                   type="text"
                   value={editCode}
                   onChange={(e) => setEditCode(e.target.value)}
-                  className="w-full px-3 py-2 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600"
+                  className="w-full px-3 py-2 text-xs font-mono font-semibold bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400"
                 />
               </div>
               <div className="sm:col-span-6">
-                <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                  Titolo / Nome Commessa
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  Nome commessa
                 </label>
                 <input
                   type="text"
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
-                  className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-slate-400"
                 />
               </div>
               <div className="sm:col-span-3">
                 <button
                   type="submit"
-                  className="w-full py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="w-full py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
                 >
                   <Pencil className="w-3.5 h-3.5" />
-                  <span>Aggiorna Nome</span>
+                  <span>Salva</span>
                 </button>
               </div>
             </form>
 
-            {/* Metriche Commessa */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200">
-                <div className="text-[10px] font-bold uppercase text-blue-700">
-                  Articoli Spuntati
-                </div>
-                <div className="text-xl font-black font-mono text-slate-900 mt-0.5">
+            {/* Metriche Commessa (pulite e tabulari, senza box colorati) */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 border border-slate-200/80 rounded-xl bg-slate-50/50">
+              <div className="px-4 py-3">
+                <div className="text-xs text-slate-500">Articoli</div>
+                <div className="text-lg font-semibold font-mono text-slate-900 tabular-nums mt-0.5">
                   {summary.checkedItems}/{summary.totalItems}
                 </div>
               </div>
-              <div className="p-3 rounded-xl bg-indigo-50/70 border border-indigo-200">
-                <div className="text-[10px] font-bold uppercase text-indigo-700">
-                  Bancali & Scatole
-                </div>
-                <div className="text-xl font-black font-mono text-slate-900 mt-0.5">
-                  {summary.totalPallets}B · {summary.totalBoxes}S
+              <div className="px-4 py-3">
+                <div className="text-xs text-slate-500">Bancali · Scatole</div>
+                <div className="text-lg font-semibold font-mono text-slate-900 tabular-nums mt-0.5">
+                  {summary.totalPallets} · {summary.totalBoxes}
                 </div>
               </div>
-              <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200">
-                <div className="text-[10px] font-bold uppercase text-emerald-700">
-                  Peso Totale Lordo
-                </div>
-                <div className="text-xl font-black font-mono text-slate-900 mt-0.5">
+              <div className="px-4 py-3">
+                <div className="text-xs text-slate-500">Peso Lordo</div>
+                <div className="text-lg font-semibold font-mono text-slate-900 tabular-nums mt-0.5">
                   {summary.totalGrossWeightKg.toFixed(0)} kg
                 </div>
               </div>
-              <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200">
-                <div className="text-[10px] font-bold uppercase text-amber-800">
-                  Cartelli RAL / Zinc.
-                </div>
-                <div className="text-xl font-black font-mono text-slate-900 mt-0.5">
+              <div className="px-4 py-3">
+                <div className="text-xs text-slate-500">Cartelli RAL</div>
+                <div className="text-lg font-semibold font-mono text-slate-900 tabular-nums mt-0.5">
                   {activeLoad.finishingTags?.length || 0}
                 </div>
               </div>
             </div>
 
-            {/* Apri questa commessa nelle altre App di CaricoStudio */}
-            <div className="pt-2">
-              <div className="text-xs font-extrabold text-slate-700 mb-2.5">
-                Apri questa Commessa nelle App di CaricoStudio:
+            {/* Moduli CaricoStudio */}
+            <div>
+              <div className="text-xs font-medium text-slate-500 mb-2.5">
+                Apri questa commessa nei moduli
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {CARICOSTUDIO_SUB_APPS.filter((a) => a.id !== 'commesse').map((app) => {
                   const Icon = app.icon;
                   return (
@@ -1078,20 +1127,18 @@ export const CommesseFileStation: React.FC<CommesseFileStationProps> = ({
                       key={app.id}
                       type="button"
                       onClick={() => onOpenApp(app.id)}
-                      className="p-3 rounded-xl border border-slate-200 hover:border-blue-400 bg-slate-50/70 hover:bg-blue-50/50 flex items-center gap-2.5 text-left transition-all cursor-pointer group"
+                      className="p-2.5 rounded-xl border border-slate-200/90 hover:border-slate-300 bg-white hover:bg-slate-50 flex items-center gap-2.5 text-left transition-colors cursor-pointer"
                     >
                       <div
-                        className={`w-9 h-9 rounded-xl ${app.iconBg} text-white flex items-center justify-center shadow-xs shrink-0 group-hover:scale-105 transition-transform`}
+                        className={`w-8 h-8 rounded-lg ${app.iconBg} text-white flex items-center justify-center shrink-0`}
                       >
                         <Icon className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
-                        <div className="text-xs font-bold text-slate-900 truncate">
+                        <div className="text-xs font-semibold text-slate-900 truncate">
                           {app.shortTitle}
                         </div>
-                        <div className="text-[10px] text-slate-500 truncate">
-                          Apri in CaricoStudio
-                        </div>
+                        <div className="text-[11px] text-slate-500 truncate">Apri modulo</div>
                       </div>
                     </button>
                   );
@@ -1099,18 +1146,14 @@ export const CommesseFileStation: React.FC<CommesseFileStationProps> = ({
                 <button
                   type="button"
                   onClick={onOpenPrintModal}
-                  className="p-3 rounded-xl border border-slate-200 hover:border-slate-400 bg-slate-900 text-white flex items-center gap-2.5 text-left transition-all cursor-pointer group"
+                  className="p-2.5 rounded-xl border border-slate-900 bg-slate-900 hover:bg-slate-800 text-white flex items-center gap-2.5 text-left transition-colors cursor-pointer"
                 >
-                  <div className="w-9 h-9 rounded-xl bg-white/15 text-white flex items-center justify-center shrink-0">
+                  <div className="w-8 h-8 rounded-lg bg-white/15 text-white flex items-center justify-center shrink-0">
                     <Printer className="w-4 h-4" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-xs font-bold truncate">
-                      Centro Stampe
-                    </div>
-                    <div className="text-[10px] text-slate-300 truncate">
-                      Etichette e Bolle
-                    </div>
+                    <div className="text-xs font-semibold truncate">Centro Stampe</div>
+                    <div className="text-[11px] text-slate-300 truncate">Etichette e PDF</div>
                   </div>
                 </button>
               </div>
@@ -1198,10 +1241,48 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
   const [showAccountMenu, setShowAccountMenu] = useState<boolean>(false);
   const [showCommessaMenu, setShowCommessaMenu] = useState<boolean>(false);
   const [showNotifications, setShowNotifications] = useState<boolean>(false);
+  const [showWallpaperMenu, setShowWallpaperMenu] = useState<boolean>(false);
   const [showWidgetPanel, setShowWidgetPanel] = useState<boolean>(false);
-  const [wallpaper, setWallpaper] = useState<WallpaperTheme>('aurora_silk');
+  const [liveNow, setLiveNow] = useState<Date>(() => new Date());
+  const [wallpaper, setWallpaper] = useState<WallpaperTheme>(() => {
+    try {
+      const saved = localStorage.getItem('metatron_desktop_wallpaper_v3') as WallpaperTheme | null;
+      if (saved && saved in WALLPAPER_META) return saved;
+    } catch {}
+    return 'aurora_luxe';
+  });
+  const [desktopLayout, setDesktopLayout] = useState<'studio' | 'icons'>(() => {
+    try {
+      const saved = localStorage.getItem('metatron_desktop_layout_v2');
+      if (saved === 'icons' || saved === 'studio') return saved;
+    } catch {}
+    return 'icons';
+  });
+  const [desktopCategory, setDesktopCategory] = useState<'all' | StudioCategoryId>('all');
+  const [desktopSearch, setDesktopSearch] = useState<string>('');
+  const [startMenuSearch, setStartMenuSearch] = useState<string>('');
+  const desktopSearchInputRef = useRef<HTMLInputElement | null>(null);
   const [clockText, setClockText] = useState<string>('');
   const [dateText, setDateText] = useState<string>('');
+  const [longDateText, setLongDateText] = useState<string>('');
+  const [greetingText, setGreetingText] = useState<string>('Buongiorno');
+
+  const handleSetWallpaper = (next: WallpaperTheme) => {
+    setWallpaper(next);
+    try {
+      localStorage.setItem('metatron_desktop_wallpaper_v3', next);
+    } catch {}
+  };
+
+  const handleToggleDesktopLayout = (next?: 'studio' | 'icons') => {
+    setDesktopLayout((prev) => {
+      const resolved = next ?? (prev === 'studio' ? 'icons' : 'studio');
+      try {
+        localStorage.setItem('metatron_desktop_layout_v2', resolved);
+      } catch {}
+      return resolved;
+    });
+  };
 
   const unreadNotificationsCount = notifications.filter((n) => !n.read).length;
 
@@ -1416,6 +1497,7 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
   useEffect(() => {
     const updateClock = () => {
       const now = new Date();
+      setLiveNow(now);
       setClockText(
         now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
       );
@@ -1423,11 +1505,39 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
       const mm = String(now.getMonth() + 1).padStart(2, '0');
       const yyyy = now.getFullYear();
       setDateText(`${dd}/${mm}/${yyyy}`);
+      setLongDateText(
+        now.toLocaleDateString('it-IT', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+        })
+      );
+      const hr = now.getHours();
+      setGreetingText(hr < 13 ? 'Buongiorno' : hr < 18 ? 'Buon pomeriggio' : 'Buonasera');
     };
     updateClock();
     const timer = setInterval(updateClock, 15000);
     return () => clearInterval(timer);
   }, []);
+
+  // Scorciatoia Ctrl+K / Cmd+K per ricerca rapida
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        if (desktopLayout === 'studio' && !windows.some((w) => !w.minimized)) {
+          desktopSearchInputRef.current?.focus();
+        } else {
+          setShowAccountMenu(false);
+          setShowCommessaMenu(false);
+          setShowNotifications(false);
+          setShowStartMenu((prev) => !prev);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [windows, desktopLayout]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -1463,6 +1573,7 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
     setShowAccountMenu(false);
     setShowCommessaMenu(false);
     setShowNotifications(false);
+    setShowWallpaperMenu(false);
     setDesktopContextMenu(null);
   };
 
@@ -1649,7 +1760,6 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
     .toUpperCase();
 
   const renderDesktopShortcut = (item: DesktopShortcutItem) => {
-    const Icon = item.icon;
     const isWindowOpen =
       item.windowId &&
       windows.some((w) => w.id === item.windowId) &&
@@ -1699,33 +1809,36 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
           top: topPx,
         }}
         title={`${item.title} — Trascina per spostare`}
-        className={`group absolute w-[76px] py-1 px-1 rounded-xl flex flex-col items-center text-center gap-1.5 touch-none select-none focus:outline-none ${
+        className={`group absolute w-[86px] py-2 px-1 rounded-2xl flex flex-col items-center text-center gap-1.5 touch-none select-none focus:outline-none ${
           isDraggingThis
-            ? 'z-30 scale-[1.07] opacity-95 cursor-grabbing bg-white/[0.12] ring-1 ring-white/25 shadow-2xl'
-            : 'z-10 transition-[left,top,transform,background-color] duration-150 cursor-grab hover:bg-white/[0.08] active:scale-[0.97]'
+            ? 'z-30 scale-[1.07] opacity-95 cursor-grabbing bg-white/[0.15] backdrop-blur-md ring-1 ring-white/30 shadow-2xl'
+            : isLightWallpaper
+            ? 'z-10 transition-[left,top,transform,background-color,box-shadow] duration-150 cursor-grab hover:bg-white/60 hover:backdrop-blur-md hover:ring-1 hover:ring-slate-900/10 active:scale-[0.96]'
+            : 'z-10 transition-[left,top,transform,background-color,box-shadow] duration-150 cursor-grab hover:bg-white/[0.09] hover:backdrop-blur-md hover:ring-1 hover:ring-white/[0.16] active:scale-[0.96]'
         }`}
       >
-        <div
-          className={`w-[50px] h-[50px] rounded-[14px] ${item.iconBg} flex items-center justify-center text-white shadow-[0_8px_20px_rgba(0,0,0,0.45)] ring-1 ring-inset ring-white/25 transition-transform duration-150 ${
+        <DesktopAppIcon
+          id={item.id}
+          size="xl"
+          now={liveNow}
+          className={`transition-transform duration-200 ease-out ${
             isDraggingThis
-              ? 'shadow-[0_16px_30px_rgba(0,0,0,0.65)]'
-              : 'group-hover:scale-[1.06] group-hover:shadow-[0_12px_24px_rgba(0,0,0,0.55)]'
+              ? 'scale-[1.04]'
+              : 'group-hover:-translate-y-1 group-hover:scale-[1.06]'
           }`}
-        >
-          <Icon className="w-[22px] h-[22px] stroke-[1.9]" />
-        </div>
+        />
         <span
-          className={`text-[11px] font-medium leading-[1.2] tracking-[0.005em] max-w-[74px] line-clamp-2 ${
+          className={`text-[11.5px] font-medium leading-[1.2] tracking-[0.005em] max-w-[82px] line-clamp-2 ${
             isLightWallpaper
               ? 'text-slate-900'
-              : 'text-white/92 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]'
+              : 'text-white/95 drop-shadow-[0_1px_5px_rgba(0,0,0,0.95)]'
           }`}
         >
           {item.label}
         </span>
         {isWindowOpen && (
           <span
-            className="w-1.5 h-1.5 rounded-full bg-white/85 -mt-0.5"
+            className="w-1.5 h-1.5 rounded-full bg-sky-300 shadow-[0_0_8px_rgba(125,211,252,0.95)] -mt-0.5"
             aria-hidden="true"
           />
         )}
@@ -1733,15 +1846,42 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
     );
   };
 
-  return (
-    <div className="h-screen w-screen overflow-hidden flex flex-col select-none relative bg-[#090b16] font-sans">
-      {/* =====================================================================
-          1. DESKTOP WORKSPACE (SILK AURORA BACKDROP + DRAGGABLE ICON GRID)
-      ===================================================================== */}
-      <div className="flex-1 relative overflow-hidden">
-        <AuroraSilkWallpaper theme={wallpaper} />
+  const firstName = (currentUser.name || currentUser.email || 'Utente')
+    .trim()
+    .split(/\s+/)[0];
 
-        {/* Desktop Surface: Free Grid-Snapped Draggable Icons + Optional Widget */}
+  const normalizedDesktopQuery = desktopSearch.trim().toLowerCase();
+  const filteredStudioShortcuts = visibleShortcuts.filter((item) => {
+    if (desktopCategory !== 'all' && item.studioGroup !== desktopCategory) {
+      return false;
+    }
+    if (!normalizedDesktopQuery) return true;
+    return (
+      item.label.toLowerCase().includes(normalizedDesktopQuery) ||
+      item.title.toLowerCase().includes(normalizedDesktopQuery) ||
+      (item.shortDesc || '').toLowerCase().includes(normalizedDesktopQuery)
+    );
+  });
+
+  const matchingLoadsInSearch = normalizedDesktopQuery
+    ? loads.filter(
+        (ld) =>
+          ld.code.toLowerCase().includes(normalizedDesktopQuery) ||
+          ld.title.toLowerCase().includes(normalizedDesktopQuery) ||
+          (ld.client || '').toLowerCase().includes(normalizedDesktopQuery)
+      )
+    : [];
+
+  return (
+    <div className="h-screen w-screen overflow-hidden relative select-none bg-[#060913] font-sans">
+      {/* Sfondo a schermo pieno continuo anche dietro la barra dock trasparente */}
+      <AuroraSilkWallpaper theme={wallpaper} />
+
+      {/* =====================================================================
+          1. DESKTOP WORKSPACE (ICONE CLASSICHE O GRIGLIA REPARTI)
+      ===================================================================== */}
+      <div className="relative z-10 h-full w-full pb-[66px] overflow-hidden">
+        {/* Desktop Surface */}
         <div
           ref={desktopAreaRef}
           onClick={() => {
@@ -1750,41 +1890,599 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
               showAccountMenu ||
               showCommessaMenu ||
               showNotifications ||
+              showWallpaperMenu ||
               desktopContextMenu
             ) {
               closeAllPopovers();
             }
           }}
           onContextMenu={(e) => {
-            if ((e.target as HTMLElement).closest('button, aside')) return;
+            if ((e.target as HTMLElement).closest('button, aside, input')) return;
             e.preventDefault();
             closeAllPopovers();
-            const menuW = 210;
-            const menuH = 165;
+            const menuW = 220;
+            const menuH = 200;
             const x = Math.min(e.clientX, Math.max(8, window.innerWidth - menuW - 8));
-            const y = Math.min(e.clientY, Math.max(8, window.innerHeight - 44 - menuH - 8));
+            const y = Math.min(e.clientY, Math.max(8, window.innerHeight - 66 - menuH - 8));
             setDesktopContextMenu({ x, y });
           }}
-          className="no-print relative z-10 h-full w-full overflow-hidden"
+          className="no-print relative h-full w-full overflow-hidden"
         >
-          {/* Drop-target snap preview while dragging an app icon */}
-          {draggingIcon && (
-            <div
-              aria-hidden="true"
-              style={{
-                left:
-                  DESKTOP_GRID_ORIGIN_X +
-                  draggingIcon.snapCol * DESKTOP_GRID_CELL_W,
-                top:
-                  DESKTOP_GRID_ORIGIN_Y +
-                  draggingIcon.snapRow * DESKTOP_GRID_CELL_H,
-              }}
-              className="pointer-events-none absolute z-[5] w-[76px] h-[78px] rounded-xl border border-dashed border-white/40 bg-white/[0.08] transition-[left,top] duration-100"
-            />
-          )}
+          {desktopLayout === 'studio' ? (
+            /* ===============================================================
+               SCRIVANIA ORDINATA (STUDIO) — PULITA, STRUTTURATA, IMMEDIATA
+            =============================================================== */
+            <div className="h-full w-full overflow-y-auto">
+              <div className="max-w-[1180px] mx-auto px-6 sm:px-10 py-7 sm:py-9 space-y-6">
+                {/* Intestazione Ambientale + Orologio */}
+                <div className="flex flex-wrap items-end justify-between gap-4">
+                  <div className="space-y-1">
+                    <h1
+                      className={`text-2xl sm:text-[28px] font-semibold tracking-tight leading-tight ${
+                        isLightWallpaper ? 'text-slate-900' : 'text-white'
+                      }`}
+                    >
+                      {greetingText}, {firstName}
+                    </h1>
+                    <div
+                      className={`flex flex-wrap items-center gap-2 text-xs ${
+                        isLightWallpaper ? 'text-slate-600' : 'text-slate-300/80'
+                      }`}
+                    >
+                      <span className="font-medium">METATRON</span>
+                      <span aria-hidden="true">·</span>
+                      <span>{currentUser.company || 'Suite Gestionale Logistica'}</span>
+                      <span aria-hidden="true">·</span>
+                      <span className="tabular-nums">{loads.length} commesse in archivio</span>
+                    </div>
+                  </div>
 
-          {/* All Draggable Desktop Icons */}
-          {visibleShortcuts.map(renderDesktopShortcut)}
+                  <div className="text-right shrink-0">
+                    <div
+                      className={`text-3xl sm:text-[34px] font-light font-mono tabular-nums tracking-tight leading-none ${
+                        isLightWallpaper ? 'text-slate-900' : 'text-white/95'
+                      }`}
+                    >
+                      {clockText}
+                    </div>
+                    <div
+                      className={`text-xs capitalize mt-1 ${
+                        isLightWallpaper ? 'text-slate-600' : 'text-slate-300/70'
+                      }`}
+                    >
+                      {longDateText || dateText}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Striscia Commessa Attiva (singolo livello, zero rumore) */}
+                <div
+                  className={`rounded-2xl border backdrop-blur-xl px-5 py-3.5 flex flex-wrap items-center justify-between gap-4 ${
+                    isLightWallpaper
+                      ? 'bg-white/80 border-slate-200/90 text-slate-900 shadow-xs'
+                      : 'bg-white/[0.055] border-white/[0.09] text-white'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowCommessaMenu((prev) => !prev);
+                    }}
+                    className="flex items-center gap-3 text-left min-w-0 group cursor-pointer"
+                    title="Cambia commessa attiva"
+                  >
+                    <div
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                        isLightWallpaper
+                          ? 'bg-slate-900 text-white'
+                          : 'bg-white/[0.09] text-blue-300 border border-white/[0.08]'
+                      }`}
+                    >
+                      <FolderOpen className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 text-sm font-semibold truncate">
+                        <span className="font-mono tabular-nums">{activeLoad.code}</span>
+                        <span className="opacity-40">·</span>
+                        <span className="truncate max-w-[240px] sm:max-w-[300px]">
+                          {activeLoad.title}
+                        </span>
+                        <ChevronDown className="w-3.5 h-3.5 opacity-55 group-hover:opacity-100 shrink-0 transition-opacity" />
+                      </div>
+                      <div
+                        className={`text-xs truncate ${
+                          isLightWallpaper ? 'text-slate-500' : 'text-slate-300/65'
+                        }`}
+                      >
+                        {activeLoad.client || 'Cliente non impostato'}
+                        {activeLoad.destination ? ` · ${activeLoad.destination}` : ''}
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* 4 Metriche Tabulari Cliccabili */}
+                  <div
+                    className={`hidden lg:flex items-center divide-x text-xs ${
+                      isLightWallpaper ? 'divide-slate-200' : 'divide-white/10'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => openApp('tree')}
+                      className="px-4 text-left hover:opacity-80 transition-opacity cursor-pointer"
+                    >
+                      <div className={isLightWallpaper ? 'text-slate-500' : 'text-slate-400'}>
+                        Bancali
+                      </div>
+                      <div className="font-mono font-semibold tabular-nums text-sm mt-0.5">
+                        {summary.totalPallets}
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openApp('tree')}
+                      className="px-4 text-left hover:opacity-80 transition-opacity cursor-pointer"
+                    >
+                      <div className={isLightWallpaper ? 'text-slate-500' : 'text-slate-400'}>
+                        Scatole
+                      </div>
+                      <div className="font-mono font-semibold tabular-nums text-sm mt-0.5">
+                        {summary.totalBoxes}
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openApp('pallet_weights')}
+                      className="px-4 text-left hover:opacity-80 transition-opacity cursor-pointer"
+                    >
+                      <div className={isLightWallpaper ? 'text-slate-500' : 'text-slate-400'}>
+                        Peso Lordo
+                      </div>
+                      <div className="font-mono font-semibold tabular-nums text-sm mt-0.5">
+                        {summary.totalGrossWeightKg.toFixed(0)} kg
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openApp('checklist')}
+                      className="px-4 text-left hover:opacity-80 transition-opacity cursor-pointer"
+                    >
+                      <div className={isLightWallpaper ? 'text-slate-500' : 'text-slate-400'}>
+                        Spunta
+                      </div>
+                      <div className="font-mono font-semibold tabular-nums text-sm mt-0.5">
+                        {summary.checklistCompletionPercent}%
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* Azioni Commessa */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={onOpenNewLoadModal}
+                      className={`px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 whitespace-nowrap transition-colors cursor-pointer ${
+                        isLightWallpaper
+                          ? 'bg-slate-100 hover:bg-slate-200 text-slate-800'
+                          : 'bg-white/[0.08] hover:bg-white/[0.15] text-white/90'
+                      }`}
+                    >
+                      <FolderPlus className="w-3.5 h-3.5" />
+                      <span>Nuova</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCaricoStudioSubApp('home');
+                        openDesktopWindow('caricostudio');
+                      }}
+                      className={`px-4 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 whitespace-nowrap transition-colors cursor-pointer ${
+                        isLightWallpaper
+                          ? 'bg-slate-900 hover:bg-slate-800 text-white'
+                          : 'bg-white hover:bg-slate-100 text-slate-950'
+                      }`}
+                    >
+                      <span>Apri CaricoStudio</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Ricerca Rapida + Filtri Reparto */}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="relative flex-1 min-w-[240px] max-w-md">
+                    <Search
+                      className={`w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 ${
+                        isLightWallpaper ? 'text-slate-400' : 'text-slate-400'
+                      }`}
+                    />
+                    <input
+                      ref={desktopSearchInputRef}
+                      type="text"
+                      value={desktopSearch}
+                      onChange={(e) => setDesktopSearch(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && filteredStudioShortcuts.length > 0) {
+                          handleShortcutClick(filteredStudioShortcuts[0]);
+                          setDesktopSearch('');
+                        } else if (e.key === 'Escape') {
+                          setDesktopSearch('');
+                        }
+                      }}
+                      placeholder="Cerca app, modulo o commessa... (Ctrl+K)"
+                      className={`w-full pl-10 pr-9 py-2.5 text-xs rounded-xl border backdrop-blur-md transition-colors focus:outline-none ${
+                        isLightWallpaper
+                          ? 'bg-white/85 border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-slate-400'
+                          : 'bg-white/[0.06] border-white/[0.1] text-white placeholder:text-slate-400 focus:bg-white/[0.1] focus:border-white/25'
+                      }`}
+                    />
+                    {desktopSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setDesktopSearch('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-white cursor-pointer"
+                        aria-label="Cancella ricerca"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Filtri Categoria */}
+                  <div
+                    className={`flex items-center gap-1 p-1 rounded-xl border backdrop-blur-md overflow-x-auto no-scrollbar ${
+                      isLightWallpaper
+                        ? 'bg-white/75 border-slate-200/90'
+                        : 'bg-white/[0.05] border-white/[0.08]'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setDesktopCategory('all')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                        desktopCategory === 'all'
+                          ? isLightWallpaper
+                            ? 'bg-slate-900 text-white'
+                            : 'bg-white text-slate-950'
+                          : isLightWallpaper
+                          ? 'text-slate-600 hover:text-slate-900'
+                          : 'text-slate-300 hover:text-white'
+                      }`}
+                    >
+                      Tutte
+                    </button>
+                    {STUDIO_CATEGORY_META.map((cat) => (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setDesktopCategory(cat.id)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                          desktopCategory === cat.id
+                            ? isLightWallpaper
+                              ? 'bg-slate-900 text-white'
+                              : 'bg-white text-slate-950'
+                            : isLightWallpaper
+                            ? 'text-slate-600 hover:text-slate-900'
+                            : 'text-slate-300 hover:text-white'
+                        }`}
+                      >
+                        {cat.shortLabel}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Risultati Commesse durante la ricerca */}
+                {matchingLoadsInSearch.length > 0 && (
+                  <div className="space-y-2">
+                    <div
+                      className={`text-xs font-medium ${
+                        isLightWallpaper ? 'text-slate-500' : 'text-slate-400'
+                      }`}
+                    >
+                      Commesse trovate
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      {matchingLoadsInSearch.slice(0, 6).map((ld) => (
+                        <button
+                          key={ld.id}
+                          type="button"
+                          onClick={() => {
+                            onSelectLoad(ld.id);
+                            setDesktopSearch('');
+                            openApp('commesse');
+                          }}
+                          className={`px-3.5 py-2.5 rounded-xl border text-left flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                            isLightWallpaper
+                              ? 'bg-white/85 hover:bg-white border-slate-200 text-slate-900'
+                              : 'bg-white/[0.06] hover:bg-white/[0.12] border-white/[0.09] text-white'
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <div className="text-xs font-mono font-semibold truncate">
+                              {ld.code} · {ld.title}
+                            </div>
+                            <div
+                              className={`text-[11px] truncate ${
+                                isLightWallpaper ? 'text-slate-500' : 'text-slate-400'
+                              }`}
+                            >
+                              {ld.client || 'Cliente N/D'}
+                            </div>
+                          </div>
+                          <ChevronRight className="w-3.5 h-3.5 opacity-50 shrink-0" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Griglia Applicazioni Ordinate per Reparto */}
+                <div className="space-y-6 pb-4">
+                  {STUDIO_CATEGORY_META.filter(
+                    (cat) => desktopCategory === 'all' || desktopCategory === cat.id
+                  ).map((cat) => {
+                    const groupItems = filteredStudioShortcuts.filter(
+                      (it) => it.studioGroup === cat.id
+                    );
+                    if (groupItems.length === 0) return null;
+                    return (
+                      <section key={cat.id} className="space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <h2
+                            className={`text-xs font-medium tracking-wide ${
+                              isLightWallpaper ? 'text-slate-600' : 'text-slate-300/80'
+                            }`}
+                          >
+                            {cat.title}
+                          </h2>
+                          <span
+                            className={`text-[11px] font-mono tabular-nums ${
+                              isLightWallpaper ? 'text-slate-400' : 'text-slate-500'
+                            }`}
+                          >
+                            {groupItems.length}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5">
+                          {groupItems.map((item) => {
+                            const isWindowOpen =
+                              item.windowId &&
+                              windows.some((w) => w.id === item.windowId) &&
+                              (item.action === 'open_window' ||
+                                item.action === 'open_caricostudio_home' ||
+                                (item.action === 'open_subapp' &&
+                                  caricoStudioSubApp === item.subAppId));
+
+                            return (
+                              <button
+                                key={item.id}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleShortcutClick(item);
+                                }}
+                                title={item.title}
+                                className={`group relative px-3.5 py-3 rounded-xl border backdrop-blur-md flex items-center gap-3 text-left transition-all duration-150 cursor-pointer ${
+                                  isLightWallpaper
+                                    ? 'bg-white/82 hover:bg-white border-slate-200/90 hover:border-slate-300 text-slate-900 shadow-2xs hover:shadow-sm'
+                                    : 'bg-white/[0.05] hover:bg-white/[0.11] border-white/[0.08] hover:border-white/[0.2] text-white'
+                                }`}
+                              >
+                                <DesktopAppIcon
+                                  id={item.id}
+                                  size="md"
+                                  now={liveNow}
+                                  className="transition-transform duration-150 group-hover:scale-[1.06]"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-[13px] font-medium leading-tight truncate">
+                                    {item.label}
+                                  </div>
+                                  <div
+                                    className={`text-[11px] leading-tight truncate mt-0.5 ${
+                                      isLightWallpaper ? 'text-slate-500' : 'text-slate-400'
+                                    }`}
+                                  >
+                                    {item.shortDesc || 'Apri app'}
+                                  </div>
+                                </div>
+                                {isWindowOpen && (
+                                  <span
+                                    className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0"
+                                    title="Finestra aperta"
+                                  />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    );
+                  })}
+
+                  {filteredStudioShortcuts.length === 0 && matchingLoadsInSearch.length === 0 && (
+                    <div
+                      className={`py-14 text-center rounded-2xl border ${
+                        isLightWallpaper
+                          ? 'bg-white/70 border-slate-200 text-slate-600'
+                          : 'bg-white/[0.04] border-white/[0.08] text-slate-400'
+                      }`}
+                    >
+                      <p className="text-sm font-medium">
+                        Nessun risultato per &ldquo;{desktopSearch}&rdquo;
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDesktopSearch('');
+                          setDesktopCategory('all');
+                        }}
+                        className="mt-2.5 text-xs underline underline-offset-2 hover:opacity-80 cursor-pointer"
+                      >
+                        Mostra tutte le applicazioni
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* ===============================================================
+               SCRIVANIA CLASSICA AD ICONE (ESTETICA RAFFINATA)
+            =============================================================== */
+            <>
+              {draggingIcon && (
+                <div
+                  aria-hidden="true"
+                  style={{
+                    left:
+                      DESKTOP_GRID_ORIGIN_X +
+                      draggingIcon.snapCol * DESKTOP_GRID_CELL_W,
+                    top:
+                      DESKTOP_GRID_ORIGIN_Y +
+                      draggingIcon.snapRow * DESKTOP_GRID_CELL_H,
+                  }}
+                  className="pointer-events-none absolute z-[5] w-[84px] h-[88px] rounded-2xl border border-dashed border-white/40 bg-white/[0.08] backdrop-blur-sm transition-[left,top] duration-100"
+                />
+              )}
+              {visibleShortcuts.map(renderDesktopShortcut)}
+
+              {/* Angolo Ambientale Discreto (Alto Destra: Orologio + Commessa Attiva) */}
+              {!showWidgetPanel && (
+                <div className="hidden lg:flex flex-col items-end gap-3.5 absolute top-6 right-7 z-[8] pointer-events-none">
+                  <div className="text-right select-none">
+                    <div
+                      className={`text-[42px] font-light font-mono tabular-nums tracking-tight leading-none ${
+                        isLightWallpaper
+                          ? 'text-slate-900/90'
+                          : 'text-white/92 drop-shadow-[0_4px_18px_rgba(0,0,0,0.45)]'
+                      }`}
+                    >
+                      {clockText}
+                    </div>
+                    <div
+                      className={`text-xs capitalize mt-1.5 font-medium ${
+                        isLightWallpaper
+                          ? 'text-slate-600'
+                          : 'text-white/65 drop-shadow-[0_1px_6px_rgba(0,0,0,0.65)]'
+                      }`}
+                    >
+                      {longDateText || dateText}
+                    </div>
+                  </div>
+
+                  <div
+                    className={`pointer-events-auto w-[264px] rounded-2xl border backdrop-blur-2xl p-3.5 shadow-[0_16px_40px_-12px_rgba(0,0,0,0.45)] space-y-3 ${
+                      isLightWallpaper
+                        ? 'bg-white/75 border-slate-900/10 text-slate-900'
+                        : 'bg-[#0b101b]/55 border-white/[0.12] text-white'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowCommessaMenu((prev) => !prev);
+                      }}
+                      className="w-full flex items-center justify-between gap-2 text-left group cursor-pointer"
+                      title="Cambia commessa attiva"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                          <span className="font-mono text-xs font-semibold tracking-tight tabular-nums">
+                            {activeLoad.code}
+                          </span>
+                        </div>
+                        <div
+                          className={`text-xs truncate mt-0.5 ${
+                            isLightWallpaper ? 'text-slate-600' : 'text-white/70'
+                          }`}
+                        >
+                          {activeLoad.title}
+                        </div>
+                      </div>
+                      <ChevronDown className="w-3.5 h-3.5 opacity-50 group-hover:opacity-100 shrink-0 transition-opacity" />
+                    </button>
+
+                    <div
+                      className={`grid grid-cols-3 gap-1.5 pt-2.5 border-t ${
+                        isLightWallpaper ? 'border-slate-900/10' : 'border-white/[0.08]'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => openApp('pallet_weights')}
+                        className={`rounded-xl py-1.5 px-2 text-left transition-colors cursor-pointer ${
+                          isLightWallpaper
+                            ? 'hover:bg-slate-900/[0.05]'
+                            : 'hover:bg-white/[0.08]'
+                        }`}
+                      >
+                        <div className="text-[10px] opacity-60">Bancali</div>
+                        <div className="text-xs font-mono font-semibold tabular-nums mt-0.5">
+                          {summary.totalPallets}
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openApp('tree')}
+                        className={`rounded-xl py-1.5 px-2 text-left transition-colors cursor-pointer ${
+                          isLightWallpaper
+                            ? 'hover:bg-slate-900/[0.05]'
+                            : 'hover:bg-white/[0.08]'
+                        }`}
+                      >
+                        <div className="text-[10px] opacity-60">Scatole</div>
+                        <div className="text-xs font-mono font-semibold tabular-nums mt-0.5">
+                          {summary.totalBoxes}
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openApp('checklist')}
+                        className={`rounded-xl py-1.5 px-2 text-left transition-colors cursor-pointer ${
+                          isLightWallpaper
+                            ? 'hover:bg-slate-900/[0.05]'
+                            : 'hover:bg-white/[0.08]'
+                        }`}
+                      >
+                        <div className="text-[10px] opacity-60">Spunta</div>
+                        <div className="text-xs font-mono font-semibold text-emerald-400 tabular-nums mt-0.5">
+                          {summary.checklistCompletionPercent}%
+                        </div>
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowAccountMenu(false);
+                        setShowCommessaMenu(false);
+                        setShowNotifications(false);
+                        setShowStartMenu(true);
+                      }}
+                      className={`w-full px-2.5 py-1.5 rounded-xl border text-[11px] flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                        isLightWallpaper
+                          ? 'bg-slate-900/[0.04] hover:bg-slate-900/[0.08] border-slate-900/10 text-slate-600'
+                          : 'bg-white/[0.05] hover:bg-white/[0.11] border-white/[0.08] text-white/65 hover:text-white'
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Search className="w-3 h-3 opacity-75" />
+                        <span>Cerca app...</span>
+                      </span>
+                      <kbd className="font-mono text-[10px] opacity-60">Ctrl K</kbd>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
 
           {/* Desktop Right-Click Context Menu */}
           {desktopContextMenu && (
@@ -1794,27 +2492,44 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                 top: desktopContextMenu.y,
               }}
               onClick={(e) => e.stopPropagation()}
-              className="fixed z-40 w-52 rounded-xl bg-[#0d101c]/95 backdrop-blur-2xl border border-white/14 shadow-2xl p-1.5 text-white space-y-0.5"
+              className="fixed z-40 w-56 rounded-xl bg-[#0d111a]/95 backdrop-blur-2xl border border-white/14 shadow-2xl p-1.5 text-white space-y-0.5"
             >
               <button
                 type="button"
-                onClick={handleResetDesktopIcons}
+                onClick={() => {
+                  handleToggleDesktopLayout();
+                  setDesktopContextMenu(null);
+                }}
                 className="w-full px-2.5 py-2 rounded-lg hover:bg-white/[0.09] text-xs text-white/90 flex items-center gap-2 cursor-pointer transition-colors text-left"
               >
-                <LayoutGrid className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Riordina icone desktop</span>
+                <LayoutGrid className="w-3.5 h-3.5 text-blue-400" />
+                <span>
+                  {desktopLayout === 'studio'
+                    ? 'Passa a Icone libere'
+                    : 'Passa a Scrivania ordinata'}
+                </span>
               </button>
+              {desktopLayout === 'icons' && (
+                <button
+                  type="button"
+                  onClick={handleResetDesktopIcons}
+                  className="w-full px-2.5 py-2 rounded-lg hover:bg-white/[0.09] text-xs text-white/90 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-slate-300" />
+                  <span>Riordina icone desktop</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
                   const keys = Object.keys(WALLPAPER_META) as WallpaperTheme[];
                   const nextIdx = (keys.indexOf(wallpaper) + 1) % keys.length;
-                  setWallpaper(keys[nextIdx]);
+                  handleSetWallpaper(keys[nextIdx]);
                   setDesktopContextMenu(null);
                 }}
                 className="w-full px-2.5 py-2 rounded-lg hover:bg-white/[0.09] text-xs text-white/90 flex items-center gap-2 cursor-pointer transition-colors text-left"
               >
-                <Palette className="w-3.5 h-3.5 text-purple-400" />
+                <Palette className="w-3.5 h-3.5 text-sky-400" />
                 <span>Cambia sfondo</span>
               </button>
               <button
@@ -1838,25 +2553,25 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                 }}
                 className="w-full px-2.5 py-2 rounded-lg hover:bg-white/[0.09] text-xs text-white/90 flex items-center gap-2 cursor-pointer transition-colors text-left"
               >
-                <FolderPlus className="w-3.5 h-3.5 text-sky-400" />
+                <FolderPlus className="w-3.5 h-3.5 text-amber-400" />
                 <span>Nuova commessa</span>
               </button>
             </div>
           )}
 
-          {/* Optional Commessa Status Widget (Hidden by default for ultra-clean desktop) */}
+          {/* Optional Commessa Status Widget */}
           {showWidgetPanel && (
             <aside className="absolute top-4 right-4 z-20 w-full max-w-[280px] shrink-0 hidden md:block">
-              <div className="rounded-2xl bg-[#0d101c]/82 backdrop-blur-2xl border border-white/12 p-4 text-white shadow-2xl space-y-3.5">
+              <div className="rounded-2xl bg-[#0d111a]/88 backdrop-blur-2xl border border-white/12 p-4 text-white shadow-2xl space-y-3.5">
                 <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
                   <div className="flex items-center gap-2">
-                    <HardDrive className="w-4 h-4 text-indigo-400" />
-                    <span className="text-[11px] font-bold tracking-wide text-white/90">
+                    <HardDrive className="w-4 h-4 text-blue-400" />
+                    <span className="text-xs font-semibold text-white/90">
                       Stato Commessa
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="font-mono text-[10px] font-semibold text-indigo-300 tabular-nums">
+                    <span className="font-mono text-[11px] font-medium text-blue-300 tabular-nums">
                       {activeLoad.code}
                     </span>
                     <button
@@ -1900,14 +2615,9 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                     onClick={() => openApp('pallet_weights')}
                     className="p-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-left cursor-pointer transition-colors"
                   >
-                    <div className="text-[10px] text-white/55 font-medium">
-                      Bancali
-                    </div>
-                    <div className="text-sm font-bold font-mono text-white mt-0.5 tabular-nums">
-                      {summary.totalPallets}{' '}
-                      <span className="text-[10px] text-emerald-400 font-normal">
-                        ({summary.wrappedPallets} film)
-                      </span>
+                    <div className="text-[11px] text-white/55">Bancali</div>
+                    <div className="text-sm font-semibold font-mono text-white mt-0.5 tabular-nums">
+                      {summary.totalPallets}
                     </div>
                   </button>
 
@@ -1916,14 +2626,9 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                     onClick={() => openApp('tree')}
                     className="p-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-left cursor-pointer transition-colors"
                   >
-                    <div className="text-[10px] text-white/55 font-medium">
-                      Scatoloni
-                    </div>
-                    <div className="text-sm font-bold font-mono text-white mt-0.5 tabular-nums">
-                      {summary.totalBoxes}{' '}
-                      <span className="text-[10px] text-sky-400 font-normal">
-                        colli
-                      </span>
+                    <div className="text-[11px] text-white/55">Scatoloni</div>
+                    <div className="text-sm font-semibold font-mono text-white mt-0.5 tabular-nums">
+                      {summary.totalBoxes}
                     </div>
                   </button>
 
@@ -1932,14 +2637,9 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                     onClick={() => openApp('painting_tags')}
                     className="p-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-left cursor-pointer transition-colors"
                   >
-                    <div className="text-[10px] text-white/55 font-medium">
-                      Verniciatura
-                    </div>
-                    <div className="text-sm font-bold font-mono text-amber-300 mt-0.5 tabular-nums">
-                      {activeLoad.finishingTags?.length || 0}{' '}
-                      <span className="text-[10px] text-white/50 font-normal">
-                        cartelli
-                      </span>
+                    <div className="text-[11px] text-white/55">Verniciatura</div>
+                    <div className="text-sm font-semibold font-mono text-amber-300 mt-0.5 tabular-nums">
+                      {activeLoad.finishingTags?.length || 0}
                     </div>
                   </button>
 
@@ -1948,10 +2648,8 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                     onClick={() => openApp('checklist')}
                     className="p-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-left cursor-pointer transition-colors"
                   >
-                    <div className="text-[10px] text-white/55 font-medium">
-                      Spunta Merce
-                    </div>
-                    <div className="text-sm font-bold font-mono text-emerald-300 mt-0.5 tabular-nums">
+                    <div className="text-[11px] text-white/55">Spunta Merce</div>
+                    <div className="text-sm font-semibold font-mono text-emerald-300 mt-0.5 tabular-nums">
                       {summary.checklistCompletionPercent}%
                     </div>
                   </button>
@@ -1985,9 +2683,9 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
 
         {/* Transient Floating Status Notice Toast */}
         {statusNotice && (
-          <div className="no-print fixed bottom-14 left-1/2 -translate-x-1/2 z-[75] flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#0d101c]/95 backdrop-blur-xl border border-emerald-400/30 text-emerald-200 text-xs font-medium shadow-2xl">
+          <div className="no-print fixed bottom-[72px] left-1/2 -translate-x-1/2 z-[75] flex items-center gap-2 px-4 py-2 rounded-xl bg-[#0b101b]/95 backdrop-blur-2xl border border-white/15 text-white text-xs font-medium shadow-2xl">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-            <span className="truncate max-w-[320px]">{statusNotice}</span>
+            <span className="truncate max-w-[340px]">{statusNotice}</span>
           </div>
         )}
 
@@ -1998,7 +2696,6 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
           if (win.minimized) return null;
           const appDef = DESKTOP_MAIN_APPS.find((a) => a.id === win.id);
           if (!appDef) return null;
-          const Icon = appDef.icon;
           const isFocused = topVisibleWindowId === win.id;
           const activeSubAppDef =
             win.id === 'caricostudio' && caricoStudioSubApp !== 'home'
@@ -2007,37 +2704,37 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
 
           let positionStyle: React.CSSProperties = {};
           let containerClasses =
-            'fixed flex flex-col bg-slate-100 overflow-hidden transition-shadow ';
+            'fixed flex flex-col bg-[#F5F7FA] overflow-hidden transition-shadow ';
 
           if (win.snap === 'maximized') {
             positionStyle = {
               top: 0,
               left: 0,
               right: 0,
-              bottom: 44,
+              bottom: 64,
               zIndex: win.zIndex,
             };
-            containerClasses += 'rounded-none border-0 shadow-2xl';
+            containerClasses += 'rounded-b-2xl border-b border-white/12 shadow-2xl';
           } else if (win.snap === 'left') {
             positionStyle = {
               top: 0,
               left: 0,
               width: '50vw',
-              bottom: 44,
+              bottom: 64,
               zIndex: win.zIndex,
             };
             containerClasses +=
-              'rounded-none border-r border-white/15 shadow-2xl';
+              'rounded-br-2xl border-r border-b border-slate-300/60 shadow-2xl';
           } else if (win.snap === 'right') {
             positionStyle = {
               top: 0,
               left: '50vw',
               width: '50vw',
-              bottom: 44,
+              bottom: 64,
               zIndex: win.zIndex,
             };
             containerClasses +=
-              'rounded-none border-l border-white/15 shadow-2xl';
+              'rounded-bl-2xl border-l border-b border-slate-300/60 shadow-2xl';
           } else {
             positionStyle = {
               top: win.y,
@@ -2046,9 +2743,9 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
               height: win.height,
               zIndex: win.zIndex,
             };
-            containerClasses += `rounded-xl border ${
+            containerClasses += `rounded-2xl border ${
               isFocused
-                ? 'border-white/20 shadow-[0_28px_80px_rgba(0,0,0,0.65)]'
+                ? 'border-white/20 shadow-[0_32px_90px_-12px_rgba(0,0,0,0.72)]'
                 : 'border-white/10 shadow-xl opacity-96'
             }`;
           }
@@ -2062,7 +2759,7 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
               }}
               className={containerClasses}
             >
-              {/* Titlebar Finestra Obsidian */}
+              {/* Titlebar Finestra Studio */}
               <div
                 onMouseDown={(e) => {
                   if (win.snap !== 'floating') return;
@@ -2081,27 +2778,27 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                     win.snap === 'maximized' ? 'floating' : 'maximized'
                   )
                 }
-                className={`no-print h-10 px-3.5 flex items-center justify-between gap-3 shrink-0 select-none border-b border-white/[0.08] ${
+                className={`no-print h-11 px-4 flex items-center justify-between gap-3 shrink-0 select-none border-b border-white/[0.07] ${
                   isFocused
-                    ? 'bg-[#0d101b] text-white'
-                    : 'bg-[#151927] text-slate-300'
+                    ? 'bg-[#0b101b] text-white'
+                    : 'bg-[#161c29] text-slate-300'
                 } ${win.snap === 'floating' ? 'cursor-move' : ''}`}
               >
                 {/* Left: App Icon + Title */}
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div
-                    className={`w-5 h-5 rounded-md ${appDef.iconBg} flex items-center justify-center text-white shadow-xs shrink-0`}
-                  >
-                    <Icon className="w-3 h-3" />
-                  </div>
-                  <span className="text-xs font-semibold tracking-tight truncate">
+                  <DesktopAppIcon
+                    id={activeSubAppDef ? activeSubAppDef.id : win.id}
+                    size="sm"
+                    now={liveNow}
+                  />
+                  <span className="text-[13px] font-medium tracking-tight truncate">
                     {activeSubAppDef
-                      ? `CaricoStudio — ${activeSubAppDef.title}`
+                      ? `CaricoStudio · ${activeSubAppDef.shortTitle}`
                       : appDef.title}
                   </span>
                   {win.id === 'caricostudio' && (
-                    <span className="hidden md:inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white/[0.07] text-[10px] font-mono font-medium text-indigo-300 border border-white/10 shrink-0 tabular-nums">
-                      {activeLoad.code} · {activeLoad.title}
+                    <span className="hidden md:inline text-xs font-mono text-slate-400 truncate shrink-0 tabular-nums">
+                      / {activeLoad.code} · {activeLoad.title}
                     </span>
                   )}
                 </div>
@@ -2111,18 +2808,18 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                   <button
                     type="button"
                     onClick={minimizeAllToDesktop}
-                    className="px-2 py-1 rounded-md bg-white/[0.07] hover:bg-white/[0.14] text-[10px] font-semibold text-white/80 hover:text-white flex items-center gap-1 mr-1 cursor-pointer transition-colors"
+                    className="px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-white/[0.14] text-[11px] font-medium text-white/80 hover:text-white flex items-center gap-1.5 mr-1.5 cursor-pointer transition-colors whitespace-nowrap"
                     title="Torna alla Scrivania"
                   >
-                    <Monitor className="w-3 h-3" />
+                    <Monitor className="w-3.5 h-3.5" />
                     <span className="hidden sm:inline">Scrivania</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setWindowSnap(win.id, 'left')}
-                    className={`p-1.5 rounded-md hover:bg-white/12 cursor-pointer transition-colors ${
-                      win.snap === 'left' ? 'bg-indigo-600 text-white' : 'text-white/60 hover:text-white'
+                    className={`p-1.5 rounded-lg hover:bg-white/12 cursor-pointer transition-colors ${
+                      win.snap === 'left' ? 'bg-blue-600 text-white' : 'text-white/60 hover:text-white'
                     }`}
                     title="Affianca a Sinistra (50%)"
                   >
@@ -2132,8 +2829,8 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                   <button
                     type="button"
                     onClick={() => setWindowSnap(win.id, 'right')}
-                    className={`p-1.5 rounded-md hover:bg-white/12 cursor-pointer transition-colors ${
-                      win.snap === 'right' ? 'bg-indigo-600 text-white' : 'text-white/60 hover:text-white'
+                    className={`p-1.5 rounded-lg hover:bg-white/12 cursor-pointer transition-colors ${
+                      win.snap === 'right' ? 'bg-blue-600 text-white' : 'text-white/60 hover:text-white'
                     }`}
                     title="Affianca a Destra (50%)"
                   >
@@ -2148,7 +2845,7 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                         win.snap === 'floating' ? 'maximized' : 'floating'
                       )
                     }
-                    className="p-1.5 rounded-md hover:bg-white/12 text-white/60 hover:text-white cursor-pointer transition-colors"
+                    className="p-1.5 rounded-lg hover:bg-white/12 text-white/60 hover:text-white cursor-pointer transition-colors"
                     title={
                       win.snap === 'floating'
                         ? 'Ingrandisci a tutto schermo'
@@ -2165,7 +2862,7 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                   <button
                     type="button"
                     onClick={() => toggleMinimizeWindow(win.id)}
-                    className="p-1.5 rounded-md hover:bg-white/12 text-white/60 hover:text-white cursor-pointer transition-colors"
+                    className="p-1.5 rounded-lg hover:bg-white/12 text-white/60 hover:text-white cursor-pointer transition-colors"
                     title="Riduci nella barra inferiore"
                   >
                     <Minus className="w-3.5 h-3.5" />
@@ -2174,7 +2871,7 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                   <button
                     type="button"
                     onClick={() => closeWindow(win.id)}
-                    className="p-1.5 rounded-md hover:bg-rose-600 text-white/60 hover:text-white cursor-pointer transition-colors"
+                    className="p-1.5 rounded-lg hover:bg-rose-600 text-white/60 hover:text-white cursor-pointer transition-colors"
                     title="Chiudi finestra"
                   >
                     <X className="w-3.5 h-3.5" />
@@ -2184,14 +2881,14 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
 
               {/* Barra Interna Sotto-App dentro CaricoStudio */}
               {win.id === 'caricostudio' && (
-                <div className="no-print bg-white border-b border-slate-200 px-3 py-1.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0">
+                <div className="no-print bg-white border-b border-slate-200/90 px-4 py-2 flex items-center gap-1 overflow-x-auto no-scrollbar shrink-0">
                   <button
                     type="button"
                     onClick={() => setCaricoStudioSubApp('home')}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
                       caricoStudioSubApp === 'home'
                         ? 'bg-slate-900 text-white'
-                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                     }`}
                   >
                     {caricoStudioSubApp === 'home' ? (
@@ -2199,10 +2896,10 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                     ) : (
                       <ChevronLeft className="w-3.5 h-3.5" />
                     )}
-                    <span>App CaricoStudio</span>
+                    <span>Panoramica</span>
                   </button>
 
-                  <div className="h-4 w-px bg-slate-200 mx-0.5 shrink-0" />
+                  <div className="h-4 w-px bg-slate-200 mx-1 shrink-0" />
 
                   {CARICOSTUDIO_SUB_APPS.map((sub) => {
                     const SubIcon = sub.icon;
@@ -2212,9 +2909,9 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                         key={sub.id}
                         type="button"
                         onClick={() => setCaricoStudioSubApp(sub.id)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
                           isSubActive
-                            ? 'bg-indigo-600 text-white shadow-2xs'
+                            ? 'bg-slate-900 text-white'
                             : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                         }`}
                       >
@@ -2227,7 +2924,7 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
               )}
 
               {/* Corpo Interno dell'App */}
-              <div className="flex-1 overflow-hidden min-h-0 bg-slate-100">
+              <div className="flex-1 overflow-hidden min-h-0 bg-[#F5F7FA]">
                 {win.id === 'stock_movements' ||
                 win.id === 'commessa_photos' ||
                 win.id === 'file_manager' ||
@@ -2247,38 +2944,38 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                   renderAppContent(win.id, (targetId) => openApp(targetId))
                 ) : caricoStudioSubApp === 'home' ? (
                   /* HUB INTERNO DELLE APP DI CARICOSTUDIO */
-                  <div className="h-full overflow-y-auto p-6 bg-slate-50 text-slate-900">
-                    <div className="max-w-5xl mx-auto space-y-6">
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
+                  <div className="h-full overflow-y-auto px-6 py-7 bg-[#F5F7FA] text-slate-900">
+                    <div className="max-w-5xl mx-auto space-y-7">
+                      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-200/80 pb-5">
                         <div>
-                          <h2 className="text-lg font-bold text-slate-900 tracking-tight">
-                            Applicazioni CaricoStudio
+                          <div className="text-[11px] font-medium text-slate-500 mb-1">
+                            METATRON CaricoStudio
+                          </div>
+                          <h2 className="text-xl font-semibold text-slate-900 tracking-tight">
+                            {activeLoad.code} — {activeLoad.title}
                           </h2>
-                          <p className="text-xs text-slate-500 mt-0.5 font-mono tabular-nums">
-                            Commessa attiva:{' '}
-                            <strong className="text-slate-800">{activeLoad.code}</strong> ·{' '}
-                            {activeLoad.title} · {summary.totalPallets} bancali ·{' '}
-                            {summary.totalBoxes} scatole ·{' '}
-                            {summary.totalGrossWeightKg.toFixed(0)} kg
+                          <p className="text-xs text-slate-500 mt-1 tabular-nums">
+                            {summary.totalPallets} bancali · {summary.totalBoxes} scatole ·{' '}
+                            {summary.totalGrossWeightKg.toFixed(0)} kg lordi ·{' '}
+                            {summary.checkedItems}/{summary.totalItems} articoli spuntati
                           </p>
                         </div>
                         <button
                           type="button"
                           onClick={tileTwoWindowsSideBySide}
-                          className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-xs font-semibold text-slate-700 flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                          className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200/90 shadow-xs text-xs font-medium text-slate-700 flex items-center gap-2 cursor-pointer whitespace-nowrap transition-colors"
                         >
-                          <Columns className="w-3.5 h-3.5 text-emerald-600" />
+                          <Columns className="w-3.5 h-3.5 text-blue-600" />
                           Affianca con Carico / Scarico
                         </button>
                       </div>
 
                       <div>
-                        <h3 className="text-xs font-semibold text-slate-500 mb-3">
-                          Moduli Operativi Spedizione
+                        <h3 className="text-xs font-medium text-slate-500 mb-3.5">
+                          Moduli operativi spedizione
                         </h3>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
                           {CARICOSTUDIO_SUB_APPS.map((sub) => {
-                            const SubIcon = sub.icon;
                             const badge = sub.badgeText
                               ? sub.badgeText(activeLoad, summary)
                               : null;
@@ -2287,25 +2984,26 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                                 key={sub.id}
                                 type="button"
                                 onClick={() => setCaricoStudioSubApp(sub.id)}
-                                className="group p-4 rounded-xl bg-white hover:bg-indigo-50/40 border border-slate-200 hover:border-indigo-400 flex flex-col items-start text-left gap-2.5 transition-all cursor-pointer"
+                                className="group p-4 rounded-2xl bg-white hover:bg-slate-50/70 border border-slate-200/85 hover:border-slate-300 shadow-[0_1px_2px_rgba(15,23,42,0.03)] hover:shadow-[0_6px_18px_-6px_rgba(15,23,42,0.08)] flex flex-col items-start text-left gap-3 transition-all cursor-pointer"
                               >
                                 <div className="w-full flex items-center justify-between gap-2">
-                                  <div
-                                    className={`w-11 h-11 rounded-[12px] ${sub.iconBg} flex items-center justify-center text-white shadow-sm group-hover:scale-105 transition-transform`}
-                                  >
-                                    <SubIcon className="w-5 h-5" />
-                                  </div>
+                                  <DesktopAppIcon
+                                    id={sub.id}
+                                    size="lg"
+                                    now={liveNow}
+                                    className="transition-transform duration-150 group-hover:scale-[1.05]"
+                                  />
                                   {badge && (
-                                    <span className="font-mono text-[11px] font-semibold text-slate-500 tabular-nums">
+                                    <span className="font-mono text-[11px] font-medium text-slate-500 tabular-nums">
                                       {badge}
                                     </span>
                                   )}
                                 </div>
                                 <div>
-                                  <div className="text-xs font-bold text-slate-900">
+                                  <div className="text-[13px] font-semibold text-slate-900">
                                     {sub.shortTitle}
                                   </div>
-                                  <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-2 leading-snug">
+                                  <div className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">
                                     {sub.subtitle}
                                   </div>
                                 </div>
@@ -2315,21 +3013,21 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                         </div>
                       </div>
 
-                      <div className="pt-2 border-t border-slate-200">
-                        <h3 className="text-xs font-semibold text-slate-500 mb-3">
-                          Strumenti Rapidi &amp; Stampe
+                      <div className="pt-4 border-t border-slate-200/80">
+                        <h3 className="text-xs font-medium text-slate-500 mb-3.5">
+                          Strumenti rapidi e stampe
                         </h3>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                           <button
                             type="button"
                             onClick={onOpenPrintModal}
-                            className="p-3 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 flex items-center gap-3 text-left cursor-pointer transition-colors"
+                            className="p-3.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200/85 hover:border-slate-300 shadow-[0_1px_2px_rgba(15,23,42,0.03)] flex items-center gap-3 text-left cursor-pointer transition-all"
                           >
                             <div className="w-9 h-9 rounded-lg bg-slate-900 text-sky-400 flex items-center justify-center shrink-0">
                               <Printer className="w-4 h-4" />
                             </div>
                             <div className="min-w-0">
-                              <div className="text-xs font-bold text-slate-900 truncate">
+                              <div className="text-xs font-semibold text-slate-900 truncate">
                                 Centro Stampe
                               </div>
                               <div className="text-[11px] text-slate-500 truncate">
@@ -2343,13 +3041,13 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                             onClick={() =>
                               onOpenKitModal(activeLoad.pallets[0]?.id || null)
                             }
-                            className="p-3 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 flex items-center gap-3 text-left cursor-pointer transition-colors"
+                            className="p-3.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200/85 hover:border-slate-300 shadow-[0_1px_2px_rgba(15,23,42,0.03)] flex items-center gap-3 text-left cursor-pointer transition-all"
                           >
-                            <div className="w-9 h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0">
+                            <div className="w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0">
                               <CopyPlus className="w-4 h-4" />
                             </div>
                             <div className="min-w-0">
-                              <div className="text-xs font-bold text-slate-900 truncate">
+                              <div className="text-xs font-semibold text-slate-900 truncate">
                                 Genera Kit
                               </div>
                               <div className="text-[11px] text-slate-500 truncate">
@@ -2361,13 +3059,13 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                           <button
                             type="button"
                             onClick={onOpenPdfTranslator}
-                            className="p-3 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 flex items-center gap-3 text-left cursor-pointer transition-colors"
+                            className="p-3.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200/85 hover:border-slate-300 shadow-[0_1px_2px_rgba(15,23,42,0.03)] flex items-center gap-3 text-left cursor-pointer transition-all"
                           >
-                            <div className="w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0">
+                            <div className="w-9 h-9 rounded-lg bg-sky-600 text-white flex items-center justify-center shrink-0">
                               <Languages className="w-4 h-4" />
                             </div>
                             <div className="min-w-0">
-                              <div className="text-xs font-bold text-slate-900 truncate">
+                              <div className="text-xs font-semibold text-slate-900 truncate">
                                 Traduttore PDF
                               </div>
                               <div className="text-[11px] text-slate-500 truncate">
@@ -2379,13 +3077,13 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                           <button
                             type="button"
                             onClick={onSaveToFolder}
-                            className="p-3 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 flex items-center gap-3 text-left cursor-pointer transition-colors"
+                            className="p-3.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200/85 hover:border-slate-300 shadow-[0_1px_2px_rgba(15,23,42,0.03)] flex items-center gap-3 text-left cursor-pointer transition-all"
                           >
                             <div className="w-9 h-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
                               <FolderDown className="w-4 h-4" />
                             </div>
                             <div className="min-w-0">
-                              <div className="text-xs font-bold text-slate-900 truncate">
+                              <div className="text-xs font-semibold text-slate-900 truncate">
                                 Salva su PC
                               </div>
                               <div className="text-[11px] text-slate-500 truncate">
@@ -2428,93 +3126,131 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
         })}
 
         {/* ===================================================================
-            3. START MENU POPOVER (ANCORATO IN BASSO A SINISTRA)
+            3. START MENU POPOVER CON RICERCA ISTANTANEA
         =================================================================== */}
         {showStartMenu && (
           <>
             <div
-              className="no-print fixed inset-0 z-40 bg-black/35 backdrop-blur-[2px]"
-              onClick={() => setShowStartMenu(false)}
+              className="no-print fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]"
+              onClick={() => {
+                setShowStartMenu(false);
+                setStartMenuSearch('');
+              }}
             />
-            <div className="no-print fixed bottom-13 left-3 z-50 w-[92vw] max-w-3xl max-h-[82vh] overflow-y-auto rounded-2xl bg-[#0d101c]/95 backdrop-blur-2xl border border-white/12 shadow-[0_24px_70px_rgba(0,0,0,0.75)] p-5 text-white">
-              <div className="flex items-center justify-between pb-3.5 border-b border-white/10">
-                <div>
-                  <h2 className="text-sm font-bold tracking-tight text-white">
-                    Menu Applicazioni
+            <div className="no-print fixed bottom-[68px] left-3 z-50 w-[92vw] max-w-3xl max-h-[80vh] overflow-y-auto rounded-2xl bg-[#0b101b]/94 backdrop-blur-3xl border border-white/15 shadow-[0_28px_80px_rgba(0,0,0,0.78)] p-5 text-white">
+              <div className="flex items-center justify-between gap-3 pb-4 border-b border-white/10">
+                <div className="min-w-0">
+                  <h2 className="text-sm font-semibold tracking-tight text-white">
+                    Applicazioni METATRON
                   </h2>
-                  <p className="text-[11px] text-white/55 mt-0.5">
+                  <p className="text-xs text-slate-400 mt-0.5 truncate">
                     Commessa attiva:{' '}
-                    <span className="font-mono text-indigo-300">
-                      {activeLoad.code}
-                    </span>{' '}
-                    · {activeLoad.title}
+                    <span className="font-mono text-sky-300">{activeLoad.code}</span> ·{' '}
+                    {activeLoad.title}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowStartMenu(false)}
-                  className="p-1.5 rounded-lg bg-white/[0.07] hover:bg-white/[0.15] text-white/70 hover:text-white cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="relative w-48 sm:w-56">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      autoFocus
+                      value={startMenuSearch}
+                      onChange={(e) => setStartMenuSearch(e.target.value)}
+                      placeholder="Cerca app..."
+                      className="w-full pl-8 pr-3 py-1.5 text-xs bg-white/[0.08] border border-white/14 rounded-xl text-white placeholder:text-slate-400 focus:outline-none focus:border-white/35"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowStartMenu(false);
+                      setStartMenuSearch('');
+                    }}
+                    className="p-1.5 rounded-xl bg-white/[0.07] hover:bg-white/[0.15] text-white/70 hover:text-white cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               {/* App Principali */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 py-4 border-b border-white/10">
-                {visibleMainApps.map((app) => {
-                  const Icon = app.icon;
-                  return (
-                    <button
-                      key={app.id}
-                      type="button"
-                      onClick={() => {
-                        if (app.id === 'caricostudio') {
-                          setCaricoStudioSubApp('home');
-                          openDesktopWindow('caricostudio');
-                        } else {
-                          openDesktopWindow(app.id);
-                        }
-                      }}
-                      className="p-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.08] flex items-center gap-3 text-left transition-all cursor-pointer group"
-                    >
-                      <div
-                        className={`w-11 h-11 rounded-[12px] ${app.iconBg} flex items-center justify-center text-white shadow-md ring-1 ring-inset ring-white/20 shrink-0 group-hover:scale-105 transition-transform`}
-                      >
-                        <Icon className="w-5 h-5" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-white">
-                          {app.shortTitle}
-                        </div>
-                        <div className="text-[11px] text-white/55 line-clamp-1 mt-0.5">
-                          {app.subtitle}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Sotto-App CaricoStudio */}
-              <div className="py-4">
-                <div className="text-[11px] font-semibold text-white/50 mb-2.5">
-                  Moduli interni CaricoStudio
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {CARICOSTUDIO_SUB_APPS.map((app) => {
-                    const Icon = app.icon;
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 py-4 border-b border-white/10">
+                {visibleMainApps
+                  .filter((app) => {
+                    const q = startMenuSearch.trim().toLowerCase();
+                    if (!q) return true;
+                    return (
+                      app.shortTitle.toLowerCase().includes(q) ||
+                      app.title.toLowerCase().includes(q) ||
+                      app.subtitle.toLowerCase().includes(q)
+                    );
+                  })
+                  .map((app) => {
                     return (
                       <button
                         key={app.id}
                         type="button"
-                        onClick={() => openApp(app.id)}
-                        className="p-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.07] flex items-center gap-2.5 text-left transition-colors cursor-pointer"
+                        onClick={() => {
+                          setStartMenuSearch('');
+                          if (app.id === 'caricostudio') {
+                            setCaricoStudioSubApp('home');
+                            openDesktopWindow('caricostudio');
+                          } else {
+                            openDesktopWindow(app.id);
+                          }
+                        }}
+                        className="p-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.11] border border-white/[0.07] hover:border-white/[0.16] flex items-center gap-3 text-left transition-all cursor-pointer group"
                       >
-                        <div
-                          className={`w-8 h-8 rounded-[9px] ${app.iconBg} flex items-center justify-center text-white shadow-xs shrink-0`}
-                        >
-                          <Icon className="w-4 h-4" />
+                        <DesktopAppIcon
+                          id={app.id}
+                          size="md"
+                          now={liveNow}
+                          className="transition-transform duration-150 group-hover:scale-[1.06]"
+                        />
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold text-white truncate">
+                            {app.shortTitle}
+                          </div>
+                          <div className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">
+                            {app.subtitle}
+                          </div>
                         </div>
+                      </button>
+                    );
+                  })}
+              </div>
+
+              {/* Sotto-App CaricoStudio */}
+              <div className="py-4">
+                <div className="text-[11px] font-medium text-slate-400 mb-2.5">
+                  Moduli interni CaricoStudio
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {CARICOSTUDIO_SUB_APPS.filter((app) => {
+                    const q = startMenuSearch.trim().toLowerCase();
+                    if (!q) return true;
+                    return (
+                      app.shortTitle.toLowerCase().includes(q) ||
+                      app.title.toLowerCase().includes(q)
+                    );
+                  }).map((app) => {
+                    return (
+                      <button
+                        key={app.id}
+                        type="button"
+                        onClick={() => {
+                          setStartMenuSearch('');
+                          openApp(app.id);
+                        }}
+                        className="p-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.11] border border-white/[0.07] hover:border-white/[0.16] flex items-center gap-2.5 text-left transition-all cursor-pointer group"
+                      >
+                        <DesktopAppIcon
+                          id={app.id}
+                          size="sm"
+                          now={liveNow}
+                          className="transition-transform duration-150 group-hover:scale-[1.06]"
+                        />
                         <div className="text-xs font-medium text-white/90 truncate">
                           {app.shortTitle}
                         </div>
@@ -2529,9 +3265,9 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                   <button
                     type="button"
                     onClick={tileTwoWindowsSideBySide}
-                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold flex items-center gap-1.5 cursor-pointer"
+                    className="px-3 py-1.5 rounded-lg bg-white/[0.08] hover:bg-white/[0.15] text-white font-medium flex items-center gap-1.5 cursor-pointer transition-colors"
                   >
-                    <Columns className="w-3.5 h-3.5" />
+                    <Columns className="w-3.5 h-3.5 text-emerald-400" />
                     <span>Affianca 2 App</span>
                   </button>
                   <button
@@ -2540,7 +3276,7 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                       setShowStartMenu(false);
                       onOpenPdfDirect();
                     }}
-                    className="px-3 py-1.5 rounded-lg bg-white/[0.08] hover:bg-white/[0.15] text-white font-medium flex items-center gap-1.5 cursor-pointer"
+                    className="px-3 py-1.5 rounded-lg bg-white/[0.08] hover:bg-white/[0.15] text-white font-medium flex items-center gap-1.5 cursor-pointer transition-colors"
                   >
                     <FileText className="w-3.5 h-3.5 text-sky-400" />
                     <span>PDF Materiali</span>
@@ -2551,9 +3287,9 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                       setShowStartMenu(false);
                       onOpenPrintModal();
                     }}
-                    className="px-3 py-1.5 rounded-lg bg-white/[0.08] hover:bg-white/[0.15] text-white font-medium flex items-center gap-1.5 cursor-pointer"
+                    className="px-3 py-1.5 rounded-lg bg-white/[0.08] hover:bg-white/[0.15] text-white font-medium flex items-center gap-1.5 cursor-pointer transition-colors"
                   >
-                    <Printer className="w-3.5 h-3.5 text-indigo-400" />
+                    <Printer className="w-3.5 h-3.5 text-blue-400" />
                     <span>Stampe</span>
                   </button>
                 </div>
@@ -2564,7 +3300,7 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                     setShowStartMenu(false);
                     onOpenNewLoadModal();
                   }}
-                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold flex items-center gap-1.5 cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-950 font-medium flex items-center gap-1.5 cursor-pointer transition-colors"
                 >
                   <FolderPlus className="w-3.5 h-3.5" />
                   <span>Nuova Commessa</span>
@@ -2583,7 +3319,7 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
               className="no-print fixed inset-0 z-40"
               onClick={() => setShowCommessaMenu(false)}
             />
-            <div className="no-print fixed bottom-13 right-28 z-50 w-72 rounded-2xl bg-[#0d101c]/95 backdrop-blur-2xl border border-white/12 shadow-2xl p-3 text-white">
+            <div className="no-print fixed bottom-[68px] right-28 z-50 w-72 rounded-2xl bg-[#0b101b]/95 backdrop-blur-3xl border border-white/15 shadow-2xl p-3 text-white">
               <div className="flex items-center justify-between px-1 pb-2 border-b border-white/10">
                 <span className="text-[11px] font-semibold text-white/65">
                   Commessa Attiva
@@ -2645,7 +3381,7 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
               className="no-print fixed inset-0 z-40"
               onClick={() => setShowAccountMenu(false)}
             />
-            <div className="no-print fixed bottom-13 right-3 z-50 w-72 rounded-2xl bg-[#0d101c]/95 backdrop-blur-2xl border border-white/12 shadow-2xl p-3.5 text-white space-y-3">
+            <div className="no-print fixed bottom-[68px] right-3 z-50 w-72 rounded-2xl bg-[#0b101b]/95 backdrop-blur-3xl border border-white/15 shadow-2xl p-3.5 text-white space-y-3">
               {/* Profilo Utente */}
               <div className="flex items-center gap-3 pb-3 border-b border-white/10">
                 <div
@@ -2788,13 +3524,77 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
           onDismiss={onDismissNotification}
           onOpenApp={(appId) => openApp(appId)}
         />
+        {/* ===================================================================
+            5C. SELETTORE SFONDI DESKTOP POPOVER
+        =================================================================== */}
+        {showWallpaperMenu && (
+          <>
+            <div
+              className="no-print fixed inset-0 z-40"
+              onClick={() => setShowWallpaperMenu(false)}
+            />
+            <div className="no-print fixed bottom-[68px] right-24 z-50 w-64 rounded-2xl bg-[#0b101b]/95 backdrop-blur-3xl border border-white/15 shadow-2xl p-3 text-white space-y-2">
+              <div className="px-1 pb-1.5 border-b border-white/10 flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-white/75">
+                  Sfondi Scrivania
+                </span>
+                <Palette className="w-3.5 h-3.5 text-sky-400" />
+              </div>
+              <div className="space-y-1">
+                {(Object.keys(WALLPAPER_META) as WallpaperTheme[]).map((themeKey) => {
+                  const meta = WALLPAPER_META[themeKey];
+                  const isSelected = wallpaper === themeKey;
+                  const swatchStyle =
+                    themeKey === 'aurora_luxe'
+                      ? 'from-blue-600 via-cyan-400 to-purple-500'
+                      : themeKey === 'alpine_twilight'
+                      ? 'from-slate-800 via-indigo-700 to-amber-300'
+                      : themeKey === 'obsidian_glass'
+                      ? 'from-slate-900 via-slate-700 to-sky-900'
+                      : themeKey === 'daylight_clean'
+                      ? 'from-slate-100 via-sky-100 to-slate-200'
+                      : themeKey === 'midnight_violet'
+                      ? 'from-indigo-900 via-violet-700 to-sky-600'
+                      : themeKey === 'emerald_mist'
+                      ? 'from-teal-900 via-emerald-700 to-cyan-700'
+                      : 'from-slate-900 via-fuchsia-900 to-teal-700';
+                  return (
+                    <button
+                      key={themeKey}
+                      type="button"
+                      onClick={() => {
+                        handleSetWallpaper(themeKey);
+                        setShowWallpaperMenu(false);
+                      }}
+                      className={`w-full px-2.5 py-2 rounded-xl text-xs flex items-center justify-between gap-2.5 transition-colors cursor-pointer ${
+                        isSelected
+                          ? 'bg-white/[0.15] text-white font-medium'
+                          : 'text-white/75 hover:bg-white/[0.08] hover:text-white'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2.5 min-w-0">
+                        <span
+                          className={`w-6 h-4 rounded-md bg-gradient-to-br ${swatchStyle} ring-1 ring-white/25 shrink-0`}
+                        />
+                        <span className="truncate">{meta.name}</span>
+                      </span>
+                      {isSelected && (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* =====================================================================
-          6. BARRA INFERIORE MINIMAL OBSIDIAN (ESATTAMENTE COME DA RIFERIMENTO)
+          6. BARRA DOCK INFERIORE FLOTTANTE IN VETRO SATINATO
       ===================================================================== */}
-      <footer className="no-print h-11 bg-[#090b12]/95 backdrop-blur-2xl border-t border-white/[0.08] px-2.5 flex items-center justify-between gap-2 z-50 text-white shrink-0">
-        {/* Bottom-Left: Minimal 4-Square Start Button + Open Window Tabs */}
+      <footer className="no-print fixed bottom-2.5 left-3 right-3 h-12 rounded-2xl bg-[#090e1a]/76 backdrop-blur-3xl border border-white/[0.15] shadow-[0_18px_48px_rgba(0,0,0,0.58),inset_0_1px_0_rgba(255,255,255,0.16)] px-3 flex items-center justify-between gap-2 z-50 text-white">
+        {/* Bottom-Left: App Launcher + Open Window Tabs */}
         <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-x-auto no-scrollbar">
           <button
             type="button"
@@ -2802,27 +3602,28 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
               setShowAccountMenu(false);
               setShowCommessaMenu(false);
               setShowNotifications(false);
+              setShowWallpaperMenu(false);
               setShowStartMenu((prev) => !prev);
             }}
-            className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors cursor-pointer ${
+            className={`h-8 px-2.5 rounded-xl flex items-center gap-2 shrink-0 text-xs font-medium transition-all cursor-pointer ${
               showStartMenu
-                ? 'bg-white/15 text-white'
-                : 'text-white/75 hover:bg-white/[0.09] hover:text-white'
+                ? 'bg-white/18 text-white ring-1 ring-white/20'
+                : 'text-white/85 hover:bg-white/[0.11] hover:text-white'
             }`}
-            title="Menu Applicazioni"
+            title="Menu Applicazioni (Ctrl+K)"
             aria-label="Menu Applicazioni"
           >
-            <LayoutGrid className="w-4 h-4 stroke-[1.8]" />
+            <LayoutGrid className="w-4 h-4 stroke-[1.85]" />
+            <span className="hidden sm:inline">App</span>
           </button>
 
           {windows.length > 0 && (
-            <div className="h-4 w-px bg-white/10 mx-0.5 shrink-0" />
+            <div className="h-4 w-px bg-white/14 mx-0.5 shrink-0" />
           )}
 
           {windows.map((win) => {
             const appDef = DESKTOP_MAIN_APPS.find((a) => a.id === win.id);
             if (!appDef) return null;
-            const Icon = appDef.icon;
             const isTop = topVisibleWindowId === win.id && !win.minimized;
             const activeSubDef =
               win.id === 'caricostudio' && caricoStudioSubApp !== 'home'
@@ -2831,12 +3632,12 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
             return (
               <div
                 key={win.id}
-                className={`group relative flex items-center gap-1.5 h-8 pl-2 pr-1.5 rounded-lg text-xs transition-colors shrink-0 ${
+                className={`group relative flex items-center gap-1.5 h-8 pl-2 pr-1.5 rounded-xl text-xs transition-all shrink-0 ${
                   isTop
-                    ? 'bg-white/[0.12] text-white font-semibold'
+                    ? 'bg-white/[0.16] text-white font-medium ring-1 ring-white/[0.14]'
                     : win.minimized
-                    ? 'text-white/45 hover:bg-white/[0.07] hover:text-white/85'
-                    : 'bg-white/[0.06] text-white/80 hover:bg-white/[0.1]'
+                    ? 'text-white/45 hover:bg-white/[0.09] hover:text-white/85'
+                    : 'bg-white/[0.07] text-white/80 hover:bg-white/[0.12]'
                 }`}
               >
                 <button
@@ -2848,14 +3649,14 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                       focusWindow(win.id);
                     }
                   }}
-                  className="flex items-center gap-1.5 cursor-pointer"
+                  className="flex items-center gap-2 cursor-pointer"
                 >
-                  <div
-                    className={`w-4 h-4 rounded-[4px] flex items-center justify-center ${appDef.iconBg} text-white`}
-                  >
-                    <Icon className="w-2.5 h-2.5" />
-                  </div>
-                  <span className="truncate max-w-[155px]">
+                  <DesktopAppIcon
+                    id={activeSubDef ? activeSubDef.id : win.id}
+                    size="xs"
+                    now={liveNow}
+                  />
+                  <span className="truncate max-w-[160px]">
                     {activeSubDef
                       ? `${appDef.shortTitle} · ${activeSubDef.shortTitle}`
                       : appDef.shortTitle}
@@ -2870,14 +3671,14 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                   <X className="w-3 h-3" />
                 </button>
                 {isTop && (
-                  <span className="absolute bottom-0.5 left-2.5 right-2.5 h-[2px] rounded-full bg-indigo-400" />
+                  <span className="absolute bottom-0.5 left-3 right-3 h-[2px] rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)]" />
                 )}
               </div>
             );
           })}
         </div>
 
-        {/* Bottom-Right: Quiet Tray Icons + Stacked Time/Date + Circular User Avatar */}
+        {/* Bottom-Right: Quiet Tray Controls */}
         <div className="flex items-center gap-1 shrink-0">
           {/* Quiet Commessa Trigger */}
           <button
@@ -2886,16 +3687,17 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
               setShowStartMenu(false);
               setShowAccountMenu(false);
               setShowNotifications(false);
+              setShowWallpaperMenu(false);
               setShowCommessaMenu((prev) => !prev);
             }}
-            className={`hidden sm:flex items-center gap-1 h-7 px-2 rounded-md text-[11px] font-mono transition-colors cursor-pointer tabular-nums ${
+            className={`hidden sm:flex items-center gap-1.5 h-8 px-2.5 rounded-xl text-xs font-mono transition-colors cursor-pointer tabular-nums ${
               showCommessaMenu
-                ? 'bg-white/15 text-white'
-                : 'text-white/60 hover:bg-white/[0.08] hover:text-white'
+                ? 'bg-white/18 text-white'
+                : 'text-white/75 hover:bg-white/[0.1] hover:text-white'
             }`}
             title={`Commessa attiva: ${activeLoad.code} — ${activeLoad.title}`}
           >
-            <span className="truncate max-w-[110px]">{activeLoad.code}</span>
+            <span className="truncate max-w-[115px]">{activeLoad.code}</span>
             <ChevronDown className="w-3 h-3 opacity-60" />
           </button>
 
@@ -2903,36 +3705,28 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
           <button
             type="button"
             onClick={tileTwoWindowsSideBySide}
-            className="w-7 h-7 rounded-md text-white/50 hover:text-white hover:bg-white/[0.08] flex items-center justify-center cursor-pointer transition-colors"
+            className="w-8 h-8 rounded-xl text-white/65 hover:text-white hover:bg-white/[0.1] flex items-center justify-center cursor-pointer transition-colors"
             title="Affianca CaricoStudio + Carico/Scarico"
           >
             <Columns className="w-3.5 h-3.5" />
           </button>
 
-          {/* Widget Toggle */}
-          <button
-            type="button"
-            onClick={() => setShowWidgetPanel((p) => !p)}
-            className={`w-7 h-7 rounded-md flex items-center justify-center cursor-pointer transition-colors ${
-              showWidgetPanel
-                ? 'bg-white/15 text-white'
-                : 'text-white/50 hover:text-white hover:bg-white/[0.08]'
-            }`}
-            title="Mostra/Nascondi Riepilogo Commessa"
-          >
-            <Activity className="w-3.5 h-3.5" />
-          </button>
-
-          {/* Wallpaper Switcher */}
+          {/* Selettore Sfondi */}
           <button
             type="button"
             onClick={() => {
-              const keys = Object.keys(WALLPAPER_META) as WallpaperTheme[];
-              const nextIdx = (keys.indexOf(wallpaper) + 1) % keys.length;
-              setWallpaper(keys[nextIdx]);
+              setShowStartMenu(false);
+              setShowCommessaMenu(false);
+              setShowAccountMenu(false);
+              setShowNotifications(false);
+              setShowWallpaperMenu((prev) => !prev);
             }}
-            className="w-7 h-7 rounded-md text-white/50 hover:text-white hover:bg-white/[0.08] flex items-center justify-center cursor-pointer transition-colors"
-            title={`Cambia Sfondo (${wallpaperInfo.name})`}
+            className={`w-8 h-8 rounded-xl flex items-center justify-center cursor-pointer transition-colors ${
+              showWallpaperMenu
+                ? 'bg-white/18 text-sky-300 ring-1 ring-white/20'
+                : 'text-white/65 hover:text-white hover:bg-white/[0.1]'
+            }`}
+            title={`Scegli Sfondo (${wallpaperInfo.name})`}
           >
             <Palette className="w-3.5 h-3.5" />
           </button>
@@ -2942,7 +3736,7 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
             <button
               type="button"
               onClick={onOpenTutorial}
-              className="w-7 h-7 rounded-md text-white/50 hover:text-white hover:bg-white/[0.08] flex items-center justify-center cursor-pointer transition-colors"
+              className="w-8 h-8 rounded-xl text-white/65 hover:text-white hover:bg-white/[0.1] flex items-center justify-center cursor-pointer transition-colors"
               title="Apri guida rapida"
             >
               <HelpCircle className="w-3.5 h-3.5" />
