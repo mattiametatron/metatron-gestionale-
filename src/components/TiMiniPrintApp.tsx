@@ -21,6 +21,8 @@ import {
   Plus,
   CheckCircle2,
   RotateCcw,
+  Boxes,
+  Box,
 } from 'lucide-react';
 import {
   AuthUser,
@@ -28,10 +30,15 @@ import {
   WarehouseInventoryState,
   WarehouseStockItem,
 } from '../types/warehouse';
-import { calculateLoadSummary } from '../utils/calculations';
+import {
+  resolveAllTrackingRecordsForLoad,
+  ResolvedTrackingRecord,
+} from '../utils/qrTrackingUtils';
 import {
   binarizeThermalCanvas,
+  buildTiMiniDesignFromTrackingRecord,
   connectTiMiniBluetooth,
+  downloadThermalBatchPdf,
   downloadThermalLabelPdf,
   feedTiMiniPaper,
   isTiMiniConnected,
@@ -39,6 +46,7 @@ import {
   LabelBorderStyle,
   LabelHeightPreset,
   printRowsToTiMini,
+  printThermalBatchViaSystemDialog,
   printThermalCanvasViaSystemDialog,
   printTiMiniTestSlip,
   renderTiMiniLabelCanvas,
@@ -106,15 +114,24 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
   loads,
   activeLoad,
 }) => {
+  const activeLoadHasEntities =
+    activeLoad.pallets.length > 0 ||
+    activeLoad.boxes.length > 0 ||
+    activeLoad.items.length > 0;
+
   const [activeTab, setActiveTab] = useState<'editor' | 'warehouse' | 'commessa' | 'templates'>(
-    'editor'
+    () => (activeLoadHasEntities ? 'commessa' : 'editor')
   );
   const [inspectorTab, setInspectorTab] = useState<'content' | 'codes' | 'printer'>('content');
   const [previewZoom, setPreviewZoom] = useState<'100' | '125'>('100');
 
-  const [design, setDesign] = useState<TiMiniLabelDesign>(() =>
-    createDefaultDesign(currentUser.company)
-  );
+  const [design, setDesign] = useState<TiMiniLabelDesign>(() => {
+    const recs = resolveAllTrackingRecordsForLoad(activeLoad, inventory.movements);
+    if (recs.length > 0) {
+      return buildTiMiniDesignFromTrackingRecord(recs[0]);
+    }
+    return createDefaultDesign(currentUser.company);
+  });
   const [templates, setTemplates] = useState<TiMiniLabelDesign[]>(() => {
     try {
       const raw = localStorage.getItem(`${TEMPLATES_KEY_PREFIX}${currentUser.id}`);
@@ -130,6 +147,7 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
   const [connectedAt, setConnectedAt] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [isBatchBusy, setIsBatchBusy] = useState(false);
   const [printProgress, setPrintProgress] = useState<{ pct: number; label: string } | null>(null);
   const [darkness, setDarkness] = useState<ThermalDarknessLevel>('dark');
   const [copies, setCopies] = useState<number>(1);
@@ -151,13 +169,22 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
     mmH: 40,
   });
 
-  // Filtri liste Magazzino & Commessa
+  // Filtri liste Magazzino & Commessa (Targhette unificate QR + Barcode)
   const [warehouseSearch, setWarehouseSearch] = useState('');
   const [selectedCommessaId, setSelectedCommessaId] = useState<string>(activeLoad.id);
+  const [commessaIncludePallets, setCommessaIncludePallets] = useState(true);
+  const [commessaIncludeBoxes, setCommessaIncludeBoxes] = useState(true);
+  const [commessaIncludeItems, setCommessaIncludeItems] = useState(false);
+  const [commessaSearch, setCommessaSearch] = useState('');
   const [templateNameInput, setTemplateNameInput] = useState('');
   const [notice, setNotice] = useState<{ text: string; tone?: 'normal' | 'success' | 'error' } | null>(
     null
   );
+
+  // Sincronizza automaticamente con la commessa attiva su cui si sta lavorando
+  useEffect(() => {
+    setSelectedCommessaId(activeLoad.id);
+  }, [activeLoad.id]);
 
   const showNotice = (text: string, tone: 'normal' | 'success' | 'error' = 'normal') => {
     setNotice({ text, tone });
@@ -493,10 +520,152 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
     [loads, selectedCommessaId, activeLoad]
   );
 
-  const commessaSummary = useMemo(
-    () => calculateLoadSummary(selectedCommessa),
-    [selectedCommessa]
+  // Targhette auto-generate dalla commessa con ESATTAMENTE lo stesso QR (/t?d=...) e Barcode delle Etichette A4
+  const commessaTrackingRecords = useMemo(
+    () => resolveAllTrackingRecordsForLoad(selectedCommessa, inventory.movements),
+    [selectedCommessa, inventory.movements]
   );
+
+  const commessaCounts = useMemo(
+    () => ({
+      pallets: commessaTrackingRecords.filter((r) => r.type === 'pallet').length,
+      boxes: commessaTrackingRecords.filter((r) => r.type === 'box').length,
+      items: commessaTrackingRecords.filter((r) => r.type === 'item').length,
+    }),
+    [commessaTrackingRecords]
+  );
+
+  const filteredCommessaRecords = useMemo(() => {
+    const q = commessaSearch.trim().toLowerCase();
+    return commessaTrackingRecords.filter((rec) => {
+      if (rec.type === 'pallet' && !commessaIncludePallets) return false;
+      if (rec.type === 'box' && !commessaIncludeBoxes) return false;
+      if (rec.type === 'item' && !commessaIncludeItems) return false;
+      if (q) {
+        return (
+          rec.code.toLowerCase().includes(q) ||
+          rec.name.toLowerCase().includes(q) ||
+          rec.barcodeValue.toLowerCase().includes(q) ||
+          rec.locationPath.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [
+    commessaTrackingRecords,
+    commessaIncludePallets,
+    commessaIncludeBoxes,
+    commessaIncludeItems,
+    commessaSearch,
+  ]);
+
+  const loadFromTrackingRecord = (rec: ResolvedTrackingRecord) => {
+    setDesign(buildTiMiniDesignFromTrackingRecord(rec));
+    setActiveTab('editor');
+    showNotice(
+      `Targhetta ${rec.code} caricata con stesso QR e Barcode delle Etichette A4.`,
+      'success'
+    );
+  };
+
+  const renderBatchCanvases = async (
+    records: ResolvedTrackingRecord[]
+  ): Promise<HTMLCanvasElement[]> => {
+    const canvases: HTMLCanvasElement[] = [];
+    for (const rec of records) {
+      const d = buildTiMiniDesignFromTrackingRecord(rec);
+      const raw = await renderTiMiniLabelCanvas(d);
+      const { previewCanvas } = binarizeThermalCanvas(
+        raw,
+        d.ditherMode,
+        d.threshold,
+        Boolean(d.mirrorHorizontal)
+      );
+      canvases.push(previewCanvas);
+    }
+    return canvases;
+  };
+
+  const handleBatchPdf57mm = async () => {
+    if (filteredCommessaRecords.length === 0) return;
+    setIsBatchBusy(true);
+    try {
+      const canvases = await renderBatchCanvases(filteredCommessaRecords);
+      const safeCode = (selectedCommessa.code || 'COMMESSA').replace(
+        /[^a-zA-Z0-9_-]/g,
+        '_'
+      );
+      downloadThermalBatchPdf(
+        canvases,
+        `TiMini_Targhette_${safeCode}_${filteredCommessaRecords.length}pz.pdf`
+      );
+      showNotice(
+        `PDF 57mm generato con ${filteredCommessaRecords.length} targhette (stesso QR e Barcode).`,
+        'success'
+      );
+    } finally {
+      setIsBatchBusy(false);
+    }
+  };
+
+  const handleBatchSystemPrint = async () => {
+    if (filteredCommessaRecords.length === 0) return;
+    setIsBatchBusy(true);
+    try {
+      const canvases = await renderBatchCanvases(filteredCommessaRecords);
+      printThermalBatchViaSystemDialog(canvases);
+      showNotice(
+        `Inviate ${filteredCommessaRecords.length} targhette alla stampante Windows / USB.`,
+        'success'
+      );
+    } finally {
+      setIsBatchBusy(false);
+    }
+  };
+
+  const handleBatchBluetoothPrint = async () => {
+    if (filteredCommessaRecords.length === 0) return;
+    let activeConn = connection;
+    if (!activeConn || !isTiMiniConnected(activeConn)) {
+      await handleConnectBluetooth();
+      return;
+    }
+    setIsPrinting(true);
+    setIsBatchBusy(true);
+    try {
+      for (let i = 0; i < filteredCommessaRecords.length; i++) {
+        const rec = filteredCommessaRecords[i];
+        const d = buildTiMiniDesignFromTrackingRecord(rec);
+        const raw = await renderTiMiniLabelCanvas(d);
+        const { rows } = binarizeThermalCanvas(
+          raw,
+          d.ditherMode,
+          d.threshold,
+          Boolean(d.mirrorHorizontal)
+        );
+        setPrintProgress({
+          pct: Math.round(((i + 1) / filteredCommessaRecords.length) * 100),
+          label: `Stampa ${i + 1}/${filteredCommessaRecords.length}: ${rec.code}`,
+        });
+        await printRowsToTiMini(activeConn, rows, {
+          darkness,
+          copies: 1,
+          feedAfterSteps,
+          chunkSize,
+        });
+      }
+      showNotice(
+        `Stampate ${filteredCommessaRecords.length} targhette su TiMini BLE!`,
+        'success'
+      );
+    } catch (err: any) {
+      showNotice(err?.message || 'Errore stampa batch TiMini BLE.', 'error');
+    } finally {
+      setIsPrinting(false);
+      setIsBatchBusy(false);
+      setPrintProgress(null);
+    }
+  };
 
   const filteredWarehouseItems = useMemo(() => {
     const q = warehouseSearch.trim().toLowerCase();
@@ -534,18 +703,18 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
           </div>
           {(
             [
+              {
+                id: 'commessa',
+                label: 'Targhette Commessa',
+                icon: Layers,
+                count: commessaTrackingRecords.length,
+              },
               { id: 'editor', label: 'Editor Etichetta', icon: FileText, count: null },
               {
                 id: 'warehouse',
                 label: 'Da Magazzino',
                 icon: Package,
                 count: inventory.items.length,
-              },
-              {
-                id: 'commessa',
-                label: 'Commesse & Bancali',
-                icon: Layers,
-                count: loads.length,
               },
               {
                 id: 'templates',
@@ -880,161 +1049,190 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
               </div>
             ) : activeTab === 'commessa' ? (
               <div className="flex-1 flex flex-col min-h-0 bg-white">
-                <div className="px-6 py-4 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-3">
-                  <select
-                    value={selectedCommessa.id}
-                    onChange={(e) => setSelectedCommessaId(e.target.value)}
-                    className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg font-medium text-slate-900 focus:bg-white focus:outline-none focus:border-slate-400"
-                  >
-                    {loads.map((ld) => (
-                      <option key={ld.id} value={ld.id}>
-                        {ld.code} — {ld.client || ld.title}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDesign((prev) => ({
-                        ...prev,
-                        headerTag: `COMMESSA ${selectedCommessa.code}`,
-                        title: selectedCommessa.client || selectedCommessa.title,
-                        subtitle: `${selectedCommessa.destination || 'Spedizione'} · ${
-                          commessaSummary.totalPallets
-                        } bancali · ${commessaSummary.totalGrossWeightKg.toFixed(0)} kg`,
-                        codeText: selectedCommessa.code,
-                        footerText: `Vettore: ${selectedCommessa.carrier || 'Da definire'}`,
-                        includeQr: true,
-                        qrContent: `${selectedCommessa.code} | ${selectedCommessa.client}`,
-                        includeBarcode: true,
-                        barcodeContent: selectedCommessa.code,
-                        imageDataUrl: undefined,
-                        ditherMode: 'threshold',
-                      }));
-                      setActiveTab('editor');
-                    }}
-                    className="px-3.5 py-2 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                  >
-                    Etichetta Commessa Intera
-                  </button>
-                </div>
-
-                <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
-                  <div>
-                    <div className="text-xs font-semibold text-slate-500 mb-2.5 tabular-nums">
-                      Bancali · {selectedCommessa.pallets.length}
+                {/* Intestazione Commessa Attiva + Stampa Lotto */}
+                <div className="px-6 py-4 border-b border-slate-200/80 space-y-3 bg-slate-50/70">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <select
+                        value={selectedCommessa.id}
+                        onChange={(e) => setSelectedCommessaId(e.target.value)}
+                        className="px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg font-semibold text-slate-900 focus:outline-none focus:border-slate-500"
+                      >
+                        {loads.map((ld) => (
+                          <option key={ld.id} value={ld.id}>
+                            {ld.code} — {ld.client || ld.title}
+                            {ld.id === activeLoad.id ? ' (Attiva)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md whitespace-nowrap">
+                        Stesso QR &amp; Barcode di Etichette A4
+                      </span>
                     </div>
-                    {selectedCommessa.pallets.length === 0 ? (
-                      <div className="text-xs text-slate-400 py-3">
-                        Nessun bancale in questa commessa.
-                      </div>
-                    ) : (
-                      <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
-                        {selectedCommessa.pallets.map((p) => {
-                          const pSum = commessaSummary.palletSummaries.find(
-                            (ps) => ps.pallet.id === p.id
-                          );
-                          return (
-                            <div
-                              key={p.id}
-                              className="px-4 py-3 flex items-center justify-between gap-3 bg-white hover:bg-slate-50 transition-colors"
-                            >
-                              <div className="min-w-0">
-                                <div className="text-xs font-mono font-semibold text-slate-900">
-                                  {p.code} · {p.label}
-                                </div>
-                                <div className="text-xs text-slate-500 tabular-nums mt-0.5">
-                                  {p.dimensionsCm} · Peso{' '}
-                                  {(pSum?.grossWeightKg ?? p.tareKg).toFixed(1)} kg
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setDesign((prev) => ({
-                                    ...prev,
-                                    headerTag: `BANCALE · ${selectedCommessa.code}`,
-                                    title: selectedCommessa.client || p.label,
-                                    subtitle: `${selectedCommessa.destination || ''} · ${
-                                      p.dimensionsCm
-                                    } · ${(pSum?.grossWeightKg ?? p.tareKg).toFixed(0)} kg`,
-                                    codeText: p.code,
-                                    footerText: `Commessa ${selectedCommessa.code} · ${p.label}`,
-                                    includeQr: true,
-                                    qrContent: `${selectedCommessa.code}:${p.code}`,
-                                    includeBarcode: true,
-                                    barcodeContent: `${selectedCommessa.code}-${p.code}`,
-                                    imageDataUrl: undefined,
-                                    ditherMode: 'threshold',
-                                  }));
-                                  setActiveTab('editor');
-                                }}
-                                className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
-                              >
-                                Carica
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        disabled={isBatchBusy || filteredCommessaRecords.length === 0}
+                        onClick={handleBatchPdf57mm}
+                        className="px-3 py-1.5 text-xs font-semibold text-slate-800 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg flex items-center gap-1.5 cursor-pointer disabled:opacity-45"
+                      >
+                        <Download className="w-3.5 h-3.5 text-blue-600" />
+                        <span>PDF 57mm ({filteredCommessaRecords.length})</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isBatchBusy || filteredCommessaRecords.length === 0}
+                        onClick={handleBatchSystemPrint}
+                        className="px-3 py-1.5 text-xs font-semibold text-slate-800 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg flex items-center gap-1.5 cursor-pointer disabled:opacity-45"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>Stampa Tutte USB</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={
+                          isBatchBusy ||
+                          isPrinting ||
+                          filteredCommessaRecords.length === 0
+                        }
+                        onClick={handleBatchBluetoothPrint}
+                        className="px-3.5 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg flex items-center gap-1.5 cursor-pointer disabled:opacity-45"
+                      >
+                        <Bluetooth className="w-3.5 h-3.5" />
+                        <span>
+                          {isConnected
+                            ? `Stampa Tutte BLE (${filteredCommessaRecords.length})`
+                            : 'Connetti & Stampa Tutte'}
+                        </span>
+                      </button>
+                    </div>
                   </div>
 
-                  <div>
-                    <div className="text-xs font-semibold text-slate-500 mb-2.5 tabular-nums">
-                      Scatole · {selectedCommessa.boxes.length}
+                  {/* Filtri Tipo Targhetta + Ricerca */}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-xs font-semibold cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={commessaIncludePallets}
+                          onChange={(e) => setCommessaIncludePallets(e.target.checked)}
+                          className="accent-slate-900"
+                        />
+                        <Boxes className="w-3.5 h-3.5 text-slate-700" />
+                        <span>Bancali ({commessaCounts.pallets})</span>
+                      </label>
+                      <label className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-xs font-semibold cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={commessaIncludeBoxes}
+                          onChange={(e) => setCommessaIncludeBoxes(e.target.checked)}
+                          className="accent-blue-700"
+                        />
+                        <Box className="w-3.5 h-3.5 text-blue-700" />
+                        <span>Scatole ({commessaCounts.boxes})</span>
+                      </label>
+                      <label className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-xs font-semibold cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={commessaIncludeItems}
+                          onChange={(e) => setCommessaIncludeItems(e.target.checked)}
+                          className="accent-emerald-700"
+                        />
+                        <Package className="w-3.5 h-3.5 text-emerald-700" />
+                        <span>Oggetti ({commessaCounts.items})</span>
+                      </label>
                     </div>
-                    {selectedCommessa.boxes.length === 0 ? (
-                      <div className="text-xs text-slate-400 py-3">
-                        Nessuna scatola in questa commessa.
+
+                    <div className="relative w-full sm:w-60">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={commessaSearch}
+                        onChange={(e) => setCommessaSearch(e.target.value)}
+                        placeholder="Filtra bancali, scatole, SKU..."
+                        className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-slate-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Elenco Targhette Pronte (Auto-generate dalla Commessa) */}
+                <div className="flex-1 overflow-y-auto px-6 py-4">
+                  {filteredCommessaRecords.length === 0 ? (
+                    <div className="py-12 text-center text-xs text-slate-500 space-y-1">
+                      <div className="font-semibold text-slate-700">
+                        Nessuna targhetta corrisponde ai filtri selezionati
                       </div>
-                    ) : (
-                      <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
-                        {selectedCommessa.boxes.map((b) => (
+                      <p>
+                        Aggiungi bancali o scatole nella commessa oppure attiva i filtri sopra.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                      {filteredCommessaRecords.map((rec) => {
+                        const badgeClass =
+                          rec.type === 'pallet'
+                            ? 'bg-slate-900 text-white'
+                            : rec.type === 'box'
+                            ? 'bg-blue-700 text-white'
+                            : 'bg-emerald-700 text-white';
+                        const badgeLabel =
+                          rec.type === 'pallet'
+                            ? 'BANCALE'
+                            : rec.type === 'box'
+                            ? 'SCATOLA'
+                            : 'OGGETTO';
+                        const nestedCount = rec.detailedItems?.length || 0;
+
+                        return (
                           <div
-                            key={b.id}
+                            key={`${rec.type}-${rec.entityId}`}
                             className="px-4 py-3 flex items-center justify-between gap-3 bg-white hover:bg-slate-50 transition-colors"
                           >
                             <div className="min-w-0">
-                              <div className="text-xs font-mono font-semibold text-slate-900">
-                                {b.code} · {b.label}
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wide ${badgeClass}`}
+                                >
+                                  {badgeLabel}
+                                </span>
+                                <span className="text-xs font-mono font-bold text-slate-900">
+                                  {rec.code}
+                                </span>
+                                <span className="text-xs font-semibold text-slate-800 truncate">
+                                  {rec.name}
+                                </span>
                               </div>
-                              <div className="text-xs text-slate-500 mt-0.5">
-                                {b.dimensionsCm} {b.fragile ? '· FRAGILE' : ''}
+                              <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 mt-1 font-mono">
+                                <span>*{rec.barcodeValue}*</span>
+                                <span>·</span>
+                                <span>{rec.quantityText}</span>
+                                <span>·</span>
+                                <span>{rec.weightKg.toFixed(1)} kg</span>
+                                {nestedCount > 0 && (
+                                  <>
+                                    <span>·</span>
+                                    <span className="text-emerald-700 font-semibold">
+                                      {nestedCount} righe contenute
+                                    </span>
+                                  </>
+                                )}
                               </div>
                             </div>
+
                             <button
                               type="button"
-                              onClick={() => {
-                                setDesign((prev) => ({
-                                  ...prev,
-                                  headerTag: b.fragile
-                                    ? `FRAGILE · ${selectedCommessa.code}`
-                                    : `COLLO · ${selectedCommessa.code}`,
-                                  title: b.label,
-                                  subtitle: `${selectedCommessa.client} · ${b.dimensionsCm}`,
-                                  codeText: b.code,
-                                  footerText: b.fragile
-                                    ? 'MANEGGIARE CON CURA'
-                                    : selectedCommessa.destination || selectedCommessa.code,
-                                  includeQr: true,
-                                  qrContent: `${selectedCommessa.code}:${b.code}`,
-                                  includeBarcode: true,
-                                  barcodeContent: b.code,
-                                  imageDataUrl: undefined,
-                                  ditherMode: 'threshold',
-                                }));
-                                setActiveTab('editor');
-                              }}
-                              className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+                              onClick={() => loadFromTrackingRecord(rec)}
+                              className="px-3 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer whitespace-nowrap shrink-0"
                             >
-                              Carica
+                              Apri Anteprima 57mm
                             </button>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             ) : activeTab === 'templates' ? (

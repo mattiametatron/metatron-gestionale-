@@ -33,7 +33,6 @@ import {
   ChevronRight,
   Layers,
   FileText,
-  Palette,
   Activity,
   FolderOpen,
   ChevronLeft,
@@ -61,11 +60,7 @@ import { AuthUser, CargoLoad } from '../types/warehouse';
 import { DesktopAppIcon } from './DesktopAppIcon';
 import { LoadSummary } from '../utils/calculations';
 import { TutorialContextId } from '../data/appTutorials';
-import {
-  AuroraSilkWallpaper,
-  WallpaperTheme,
-  WALLPAPER_META,
-} from './AuroraSilkWallpaper';
+import { AuroraSilkWallpaper } from './AuroraSilkWallpaper';
 import { NotificationCenter, UnifiedNotification } from './NotificationCenter';
 
 export type CaricoStudioSubAppId =
@@ -96,7 +91,9 @@ export type SynologyAppId =
   | 'ddt_documents'
   | 'crm_directory'
   | 'purchase_orders'
-  | 'timini_print';
+  | 'timini_print'
+  | 'pallet_truck_scanner'
+  | 'excel_checklist_merger';
 
 export type DesktopWindowId =
   | 'caricostudio'
@@ -115,7 +112,9 @@ export type DesktopWindowId =
   | 'ddt_documents'
   | 'crm_directory'
   | 'purchase_orders'
-  | 'timini_print';
+  | 'timini_print'
+  | 'pallet_truck_scanner'
+  | 'excel_checklist_merger';
 
 export type WindowSnapMode = 'maximized' | 'floating' | 'left' | 'right';
 
@@ -305,6 +304,24 @@ export const DESKTOP_MAIN_APPS: DesktopAppDefinition[] = [
     iconBg: 'bg-gradient-to-b from-slate-800 to-slate-950',
     badgeText: () => '57mm BLE',
     icon: Printer,
+  },
+  {
+    id: 'pallet_truck_scanner',
+    title: 'Scanner Carico Bancale & Camion — Pistola Barcode',
+    shortTitle: 'Scanner Bancale',
+    subtitle: 'Carico/scarico bancali e camion via barcode con auto-creazione a q.tà 0',
+    iconBg: 'bg-gradient-to-b from-amber-500 to-slate-900',
+    badgeText: () => 'Barcode',
+    icon: Scan,
+  },
+  {
+    id: 'excel_checklist_merger',
+    title: 'Unione File Excel — Check-List Unificata Completa',
+    shortTitle: 'Unione Excel',
+    subtitle: 'Confronta più file Excel e riscrive automaticamente un’unica check-list',
+    iconBg: 'bg-gradient-to-b from-emerald-600 to-emerald-900',
+    badgeText: () => 'Excel',
+    icon: FileSpreadsheet,
   },
 ];
 
@@ -719,6 +736,28 @@ const DESKTOP_COLUMN_4: DesktopShortcutItem[] = [
     iconBg: 'bg-gradient-to-b from-slate-800 to-slate-950',
     icon: Printer,
     windowId: 'timini_print',
+    action: 'open_window',
+  },
+  {
+    id: 'pallet_truck_scanner',
+    label: 'Scanner Bancale',
+    title: 'Scanner Carico Bancale & Camion — Barcode scatole, camion e auto-creazione q.tà 0',
+    shortDesc: 'Barcode bancali & camion',
+    studioGroup: 'logistica',
+    iconBg: 'bg-gradient-to-b from-amber-500 to-slate-900',
+    icon: Scan,
+    windowId: 'pallet_truck_scanner',
+    action: 'open_window',
+  },
+  {
+    id: 'excel_checklist_merger',
+    label: 'Unione Excel',
+    title: 'Unione File Excel per Check-List — Confronta tutti gli Excel e riscrive la check-list unica',
+    shortDesc: 'Unisci più Excel in 1',
+    studioGroup: 'logistica',
+    iconBg: 'bg-gradient-to-b from-emerald-600 to-emerald-900',
+    icon: FileSpreadsheet,
+    windowId: 'excel_checklist_merger',
     action: 'open_window',
   },
 ];
@@ -1241,16 +1280,8 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
   const [showAccountMenu, setShowAccountMenu] = useState<boolean>(false);
   const [showCommessaMenu, setShowCommessaMenu] = useState<boolean>(false);
   const [showNotifications, setShowNotifications] = useState<boolean>(false);
-  const [showWallpaperMenu, setShowWallpaperMenu] = useState<boolean>(false);
   const [showWidgetPanel, setShowWidgetPanel] = useState<boolean>(false);
   const [liveNow, setLiveNow] = useState<Date>(() => new Date());
-  const [wallpaper, setWallpaper] = useState<WallpaperTheme>(() => {
-    try {
-      const saved = localStorage.getItem('metatron_desktop_wallpaper_v3') as WallpaperTheme | null;
-      if (saved && saved in WALLPAPER_META) return saved;
-    } catch {}
-    return 'aurora_luxe';
-  });
   const [desktopLayout, setDesktopLayout] = useState<'studio' | 'icons'>(() => {
     try {
       const saved = localStorage.getItem('metatron_desktop_layout_v2');
@@ -1266,13 +1297,6 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
   const [dateText, setDateText] = useState<string>('');
   const [longDateText, setLongDateText] = useState<string>('');
   const [greetingText, setGreetingText] = useState<string>('Buongiorno');
-
-  const handleSetWallpaper = (next: WallpaperTheme) => {
-    setWallpaper(next);
-    try {
-      localStorage.setItem('metatron_desktop_wallpaper_v3', next);
-    } catch {}
-  };
 
   const handleToggleDesktopLayout = (next?: 'studio' | 'icons') => {
     setDesktopLayout((prev) => {
@@ -1573,7 +1597,6 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
     setShowAccountMenu(false);
     setShowCommessaMenu(false);
     setShowNotifications(false);
-    setShowWallpaperMenu(false);
     setDesktopContextMenu(null);
   };
 
@@ -1651,7 +1674,9 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
       appId === 'ddt_documents' ||
       appId === 'crm_directory' ||
       appId === 'purchase_orders' ||
-      appId === 'timini_print'
+      appId === 'timini_print' ||
+      appId === 'pallet_truck_scanner' ||
+      appId === 'excel_checklist_merger'
     ) {
       openDesktopWindow(appId, initialSnap);
       return;
@@ -1752,8 +1777,7 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
     )
   );
 
-  const wallpaperInfo = WALLPAPER_META[wallpaper];
-  const isLightWallpaper = Boolean(wallpaperInfo.isLight);
+  const isLightWallpaper = false;
   const userInitial = (currentUser.name || currentUser.email || 'U')
     .trim()
     .charAt(0)
@@ -1874,8 +1898,8 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
 
   return (
     <div className="h-screen w-screen overflow-hidden relative select-none bg-[#060913] font-sans">
-      {/* Sfondo a schermo pieno continuo anche dietro la barra dock trasparente */}
-      <AuroraSilkWallpaper theme={wallpaper} />
+      {/* Sfondo unico Dolomiti al Tramonto */}
+      <AuroraSilkWallpaper />
 
       {/* =====================================================================
           1. DESKTOP WORKSPACE (ICONE CLASSICHE O GRIGLIA REPARTI)
@@ -1890,7 +1914,6 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
               showAccountMenu ||
               showCommessaMenu ||
               showNotifications ||
-              showWallpaperMenu ||
               desktopContextMenu
             ) {
               closeAllPopovers();
@@ -2522,19 +2545,6 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  const keys = Object.keys(WALLPAPER_META) as WallpaperTheme[];
-                  const nextIdx = (keys.indexOf(wallpaper) + 1) % keys.length;
-                  handleSetWallpaper(keys[nextIdx]);
-                  setDesktopContextMenu(null);
-                }}
-                className="w-full px-2.5 py-2 rounded-lg hover:bg-white/[0.09] text-xs text-white/90 flex items-center gap-2 cursor-pointer transition-colors text-left"
-              >
-                <Palette className="w-3.5 h-3.5 text-sky-400" />
-                <span>Cambia sfondo</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
                   setShowWidgetPanel((p) => !p);
                   setDesktopContextMenu(null);
                 }}
@@ -2940,7 +2950,9 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                 win.id === 'ddt_documents' ||
                 win.id === 'crm_directory' ||
                 win.id === 'purchase_orders' ||
-                win.id === 'timini_print' ? (
+                win.id === 'timini_print' ||
+                win.id === 'pallet_truck_scanner' ||
+                win.id === 'excel_checklist_merger' ? (
                   renderAppContent(win.id, (targetId) => openApp(targetId))
                 ) : caricoStudioSubApp === 'home' ? (
                   /* HUB INTERNO DELLE APP DI CARICOSTUDIO */
@@ -3524,70 +3536,6 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
           onDismiss={onDismissNotification}
           onOpenApp={(appId) => openApp(appId)}
         />
-        {/* ===================================================================
-            5C. SELETTORE SFONDI DESKTOP POPOVER
-        =================================================================== */}
-        {showWallpaperMenu && (
-          <>
-            <div
-              className="no-print fixed inset-0 z-40"
-              onClick={() => setShowWallpaperMenu(false)}
-            />
-            <div className="no-print fixed bottom-[68px] right-24 z-50 w-64 rounded-2xl bg-[#0b101b]/95 backdrop-blur-3xl border border-white/15 shadow-2xl p-3 text-white space-y-2">
-              <div className="px-1 pb-1.5 border-b border-white/10 flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-white/75">
-                  Sfondi Scrivania
-                </span>
-                <Palette className="w-3.5 h-3.5 text-sky-400" />
-              </div>
-              <div className="space-y-1">
-                {(Object.keys(WALLPAPER_META) as WallpaperTheme[]).map((themeKey) => {
-                  const meta = WALLPAPER_META[themeKey];
-                  const isSelected = wallpaper === themeKey;
-                  const swatchStyle =
-                    themeKey === 'aurora_luxe'
-                      ? 'from-blue-600 via-cyan-400 to-purple-500'
-                      : themeKey === 'alpine_twilight'
-                      ? 'from-slate-800 via-indigo-700 to-amber-300'
-                      : themeKey === 'obsidian_glass'
-                      ? 'from-slate-900 via-slate-700 to-sky-900'
-                      : themeKey === 'daylight_clean'
-                      ? 'from-slate-100 via-sky-100 to-slate-200'
-                      : themeKey === 'midnight_violet'
-                      ? 'from-indigo-900 via-violet-700 to-sky-600'
-                      : themeKey === 'emerald_mist'
-                      ? 'from-teal-900 via-emerald-700 to-cyan-700'
-                      : 'from-slate-900 via-fuchsia-900 to-teal-700';
-                  return (
-                    <button
-                      key={themeKey}
-                      type="button"
-                      onClick={() => {
-                        handleSetWallpaper(themeKey);
-                        setShowWallpaperMenu(false);
-                      }}
-                      className={`w-full px-2.5 py-2 rounded-xl text-xs flex items-center justify-between gap-2.5 transition-colors cursor-pointer ${
-                        isSelected
-                          ? 'bg-white/[0.15] text-white font-medium'
-                          : 'text-white/75 hover:bg-white/[0.08] hover:text-white'
-                      }`}
-                    >
-                      <span className="flex items-center gap-2.5 min-w-0">
-                        <span
-                          className={`w-6 h-4 rounded-md bg-gradient-to-br ${swatchStyle} ring-1 ring-white/25 shrink-0`}
-                        />
-                        <span className="truncate">{meta.name}</span>
-                      </span>
-                      {isSelected && (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </>
-        )}
       </div>
 
       {/* =====================================================================
@@ -3602,7 +3550,6 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
               setShowAccountMenu(false);
               setShowCommessaMenu(false);
               setShowNotifications(false);
-              setShowWallpaperMenu(false);
               setShowStartMenu((prev) => !prev);
             }}
             className={`h-8 px-2.5 rounded-xl flex items-center gap-2 shrink-0 text-xs font-medium transition-all cursor-pointer ${
@@ -3687,7 +3634,6 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
               setShowStartMenu(false);
               setShowAccountMenu(false);
               setShowNotifications(false);
-              setShowWallpaperMenu(false);
               setShowCommessaMenu((prev) => !prev);
             }}
             className={`hidden sm:flex items-center gap-1.5 h-8 px-2.5 rounded-xl text-xs font-mono transition-colors cursor-pointer tabular-nums ${
@@ -3709,26 +3655,6 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
             title="Affianca CaricoStudio + Carico/Scarico"
           >
             <Columns className="w-3.5 h-3.5" />
-          </button>
-
-          {/* Selettore Sfondi */}
-          <button
-            type="button"
-            onClick={() => {
-              setShowStartMenu(false);
-              setShowCommessaMenu(false);
-              setShowAccountMenu(false);
-              setShowNotifications(false);
-              setShowWallpaperMenu((prev) => !prev);
-            }}
-            className={`w-8 h-8 rounded-xl flex items-center justify-center cursor-pointer transition-colors ${
-              showWallpaperMenu
-                ? 'bg-white/18 text-sky-300 ring-1 ring-white/20'
-                : 'text-white/65 hover:text-white hover:bg-white/[0.1]'
-            }`}
-            title={`Scegli Sfondo (${wallpaperInfo.name})`}
-          >
-            <Palette className="w-3.5 h-3.5" />
           </button>
 
           {/* Guida Rapida */}

@@ -62,6 +62,8 @@ import { DdtDocumentsApp } from './components/DdtDocumentsApp';
 import { ClientsSuppliersApp } from './components/ClientsSuppliersApp';
 import { PurchaseOrdersApp } from './components/PurchaseOrdersApp';
 import { TiMiniPrintApp } from './components/TiMiniPrintApp';
+import { PalletTruckScannerApp } from './components/PalletTruckScannerApp';
+import { ExcelChecklistMergerApp } from './components/ExcelChecklistMergerApp';
 import { TruckLoadPlanner } from './components/TruckLoadPlanner';
 import { SignaturesWorkspace } from './components/SignaturesWorkspace';
 import { PrintablePackingModal } from './components/PrintablePackingModal';
@@ -86,7 +88,12 @@ import {
   TutorialPreferences,
 } from './components/AppTutorialGuide';
 import { TutorialContextId } from './data/appTutorials';
-import { TrackEntityType } from './utils/qrTrackingUtils';
+import {
+  collectBoxTreeIds,
+  collectPalletBoxIds,
+  ResolvedTrackingRecord,
+  TrackEntityType,
+} from './utils/qrTrackingUtils';
 import {
   getPackingListPdfBlobUrl,
   openPdfBlobInNewTab,
@@ -187,6 +194,7 @@ export default function App() {
   const [inventory, setInventory] = useState<WarehouseInventoryState>({
     items: [],
     movements: [],
+    categories: undefined,
     hiddenCommessaCodes: [],
   });
 
@@ -334,6 +342,9 @@ export default function App() {
             resolvedInv = {
               items: invJson.inventory.items,
               movements: invJson.inventory.movements,
+              ...(Array.isArray(invJson.inventory.categories)
+                ? { categories: invJson.inventory.categories }
+                : {}),
               hiddenCommessaCodes: Array.isArray(invJson.inventory.hiddenCommessaCodes)
                 ? invJson.inventory.hiddenCommessaCodes
                 : [],
@@ -380,6 +391,9 @@ export default function App() {
               resolvedInv = {
                 items: parsed.items,
                 movements: parsed.movements,
+                ...(Array.isArray(parsed.categories)
+                  ? { categories: parsed.categories }
+                  : {}),
                 hiddenCommessaCodes: Array.isArray(parsed.hiddenCommessaCodes)
                   ? parsed.hiddenCommessaCodes
                   : [],
@@ -398,6 +412,9 @@ export default function App() {
               resolvedInv = {
                 items: parsed.items,
                 movements: parsed.movements,
+                ...(Array.isArray(parsed.categories)
+                  ? { categories: parsed.categories }
+                  : {}),
                 hiddenCommessaCodes: Array.isArray(parsed.hiddenCommessaCodes)
                   ? parsed.hiddenCommessaCodes
                   : [],
@@ -408,7 +425,7 @@ export default function App() {
       }
 
       if (!resolvedInv) {
-        resolvedInv = { items: [], movements: [], hiddenCommessaCodes: [] };
+        resolvedInv = { items: [], movements: [], categories: [], hiddenCommessaCodes: [] };
       }
 
       // Carica preferenze notifiche locali salvate per l'utente
@@ -521,7 +538,7 @@ export default function App() {
     setIsUserWorkspaceReady(false);
     setLoads(INITIAL_LOADS);
     setActiveLoadId(INITIAL_LOADS[0].id);
-    setInventory({ items: [], movements: [], hiddenCommessaCodes: [] });
+    setInventory({ items: [], movements: [], categories: [], hiddenCommessaCodes: [] });
     setServerNotifications([]);
     setLocalAlarmNotifications([]);
     setCalendarRecords([]);
@@ -682,6 +699,7 @@ export default function App() {
       const normalized: WarehouseInventoryState = {
         items: next.items,
         movements: next.movements,
+        ...(next.categories !== undefined ? { categories: next.categories } : {}),
         hiddenCommessaCodes: next.hiddenCommessaCodes ?? [],
       };
       setInventory(normalized);
@@ -1225,11 +1243,11 @@ export default function App() {
           id: `stk-auto-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
           sku: skuKey,
           name: targetItem.name || 'Articolo Commessa',
-          category: targetItem.category || 'Generale',
+          category: targetItem.category?.trim() || '',
           unit: 'pz',
           quantity: 0,
           minStock: 2,
-          location: `Commessa ${activeLoad.code}`,
+          location: 'Magazzino',
           updatedAt: nowIso,
         };
         nextItems.unshift(stockItem);
@@ -1681,6 +1699,138 @@ export default function App() {
       ...load,
       items: load.items.filter((i) => i.id !== itemId),
     }));
+  };
+
+  // --- Scanner Carico Bancale & Camion: carica/somma articolo sul bancale/scatola ---
+  const handleScanPackItemToLoad = (payload: {
+    loadId: string;
+    sku: string;
+    name: string;
+    category: string;
+    quantity: number;
+    palletId: string | null;
+    boxId: string | null;
+    notes?: string;
+  }): { itemId: string; merged: boolean } => {
+    const nowIso = new Date().toISOString();
+    const targetSkuUpper = payload.sku.trim().toUpperCase();
+    let resultItemId = `itm-scan-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 6)}`;
+    let wasMerged = false;
+
+    setLoads((prevLoads) => {
+      const nextLoads = prevLoads.map((ld) => {
+        if (ld.id !== payload.loadId) return ld;
+        const existingIdx = ld.items.findIndex(
+          (it) =>
+            it.sku.trim().toUpperCase() === targetSkuUpper &&
+            (it.palletId || null) === (payload.palletId || null) &&
+            (it.boxId || null) === (payload.boxId || null)
+        );
+
+        let nextItems: ChecklistItem[];
+        if (existingIdx >= 0) {
+          wasMerged = true;
+          resultItemId = ld.items[existingIdx].id;
+          nextItems = ld.items.map((it, idx) =>
+            idx === existingIdx
+              ? {
+                  ...it,
+                  quantity: it.quantity + Math.max(1, payload.quantity),
+                  checked: true,
+                  loadedAt: nowIso,
+                }
+              : it
+          );
+        } else {
+          const newItem: ChecklistItem = {
+            id: resultItemId,
+            sku: payload.sku.trim(),
+            name: payload.name.trim() || payload.sku.trim(),
+            category: payload.category || 'Generale',
+            quantity: Math.max(1, payload.quantity),
+            unitWeightKg: 0,
+            checked: true,
+            fragile: false,
+            palletId: payload.palletId,
+            boxId: payload.boxId,
+            notes: payload.notes || '',
+            loadedAt: nowIso,
+          };
+          nextItems = [newItem, ...ld.items];
+        }
+
+        return {
+          ...ld,
+          loadedAt: ld.loadedAt || nowIso,
+          items: nextItems,
+        };
+      });
+      broadcastLoads(nextLoads);
+      return nextLoads;
+    });
+
+    return { itemId: resultItemId, merged: wasMerged };
+  };
+
+  const handleRenameLoadItemBySku = (
+    loadId: string,
+    sku: string,
+    newName: string
+  ) => {
+    const targetSkuUpper = sku.trim().toUpperCase();
+    setLoads((prevLoads) => {
+      const nextLoads = prevLoads.map((ld) => {
+        if (ld.id !== loadId) return ld;
+        return {
+          ...ld,
+          items: ld.items.map((it) =>
+            it.sku.trim().toUpperCase() === targetSkuUpper
+              ? { ...it, name: newName }
+              : it
+          ),
+        };
+      });
+      broadcastLoads(nextLoads);
+      return nextLoads;
+    });
+  };
+
+  // --- Unione Excel Check-List: importa righe unificate nella commessa attiva ---
+  const handleImportMergedChecklistItems = (
+    rows: Array<{
+      sku: string;
+      name: string;
+      quantity: number;
+      unitWeightKg: number;
+      category: string;
+      notes: string;
+    }>,
+    options: { replaceExisting: boolean }
+  ) => {
+    updateActiveLoad((load) => {
+      const now = Date.now();
+      const created: ChecklistItem[] = rows.map((r, idx) => ({
+        id: `itm-xls-${now}-${idx}-${Math.random().toString(36).slice(2, 5)}`,
+        sku: r.sku || `CHK-${String(load.items.length + idx + 1).padStart(3, '0')}`,
+        name: r.name || 'Articolo',
+        category: r.category || 'Generale',
+        quantity: Math.max(1, r.quantity || 1),
+        unitWeightKg: Math.max(0, r.unitWeightKg || 0),
+        checked: false,
+        fragile: false,
+        palletId: null,
+        boxId: null,
+        notes: r.notes || '',
+      }));
+
+      return {
+        ...load,
+        items: options.replaceExisting ? created : [...load.items, ...created],
+      };
+    });
+    showToast(`Importati ${rows.length} articoli unificati nella commessa`);
   };
 
   // --- Box Handlers ---
@@ -2410,16 +2560,14 @@ export default function App() {
           };
         }
         if (entityType === 'pallet') {
-          const boxIdsOnPallet = new Set(
-            load.boxes.filter((b) => b.palletId === entityId).map((b) => b.id)
-          );
+          const boxIdsOnPallet = collectPalletBoxIds(load.boxes, entityId);
           return {
             ...load,
             pallets: load.pallets.map((p) =>
               p.id === entityId ? { ...p, [field]: timestampIso } : p
             ),
             boxes: load.boxes.map((b) =>
-              b.palletId === entityId ? { ...b, [field]: timestampIso } : b
+              boxIdsOnPallet.has(b.id) ? { ...b, [field]: timestampIso } : b
             ),
             items: load.items.map((it) =>
               it.palletId === entityId || (it.boxId && boxIdsOnPallet.has(it.boxId))
@@ -2429,13 +2577,16 @@ export default function App() {
           };
         }
         if (entityType === 'box') {
+          const boxTreeIds = collectBoxTreeIds(load.boxes, entityId);
           return {
             ...load,
             boxes: load.boxes.map((b) =>
-              b.id === entityId ? { ...b, [field]: timestampIso } : b
+              boxTreeIds.has(b.id) ? { ...b, [field]: timestampIso } : b
             ),
             items: load.items.map((it) =>
-              it.boxId === entityId ? { ...it, [field]: timestampIso } : it
+              it.boxId && boxTreeIds.has(it.boxId)
+                ? { ...it, [field]: timestampIso }
+                : it
             ),
           };
         }
@@ -2456,6 +2607,170 @@ export default function App() {
           : 'Data e ora SCARICO (spedizione) aggiornata'
       );
     }
+  };
+
+  // --- Scarico Barcode Completo (Bancale / Scatola / Oggetto) con Data, Ora e Magazzino ---
+  const handleDispatchTrackingRecord = (
+    record: ResolvedTrackingRecord,
+    options?: { syncWarehouse?: boolean; undo?: boolean }
+  ): {
+    timestampIso?: string;
+    itemsCount: number;
+    piecesCount: number;
+    warehouseMatchedCount: number;
+  } => {
+    const isUndo = Boolean(options?.undo);
+    const syncWarehouse = options?.syncWarehouse !== false;
+    const nowIso = isUndo ? undefined : new Date().toISOString();
+
+    handleStampEntityDate(
+      record.commessaCode,
+      record.type,
+      record.entityId,
+      'shippedAt',
+      nowIso
+    );
+
+    const targetLoad = loads.find(
+      (l) =>
+        (l.code || '').trim().toUpperCase() ===
+        (record.commessaCode || '').trim().toUpperCase()
+    );
+
+    const affectedItems: Array<{
+      itemId: string;
+      sku: string;
+      name: string;
+      quantity: number;
+      boxCode?: string;
+    }> = [];
+
+    if (record.detailedItems && record.detailedItems.length > 0) {
+      record.detailedItems.forEach((d) => {
+        affectedItems.push({
+          itemId: d.itemId,
+          sku: d.sku,
+          name: d.name,
+          quantity: d.quantity,
+          boxCode: d.boxCode || undefined,
+        });
+      });
+    } else if (record.type === 'item' && targetLoad) {
+      const it = targetLoad.items.find((x) => x.id === record.entityId);
+      if (it) {
+        affectedItems.push({
+          itemId: it.id,
+          sku: it.sku,
+          name: it.name,
+          quantity: it.quantity,
+          boxCode: record.boxCode || undefined,
+        });
+      }
+    }
+
+    const totalPieces = affectedItems.reduce(
+      (acc, it) => acc + Math.max(0, Number(it.quantity) || 0),
+      0
+    );
+
+    let warehouseMatchedCount = 0;
+
+    if (!isUndo && syncWarehouse && nowIso && affectedItems.length > 0) {
+      const nextItems = inventory.items.map((item) => ({ ...item }));
+      const newMovements: StockMovement[] = [];
+      const entityLabel =
+        record.type === 'pallet'
+          ? 'Bancale'
+          : record.type === 'box'
+          ? 'Scatola'
+          : 'Oggetto';
+
+      affectedItems.forEach((entry, idx) => {
+        const skuUpper = (entry.sku || '').trim().toUpperCase();
+        const invIdx = nextItems.findIndex(
+          (inv) =>
+            inv.sku.trim().toUpperCase() === skuUpper ||
+            (inv.barcode && inv.barcode.trim().toUpperCase() === skuUpper)
+        );
+        const qtyToDeduct = Math.max(1, Number(entry.quantity) || 1);
+        if (invIdx >= 0) {
+          warehouseMatchedCount += 1;
+          const prevQty = Number(nextItems[invIdx].quantity) || 0;
+          const resultingQty = Math.max(
+            0,
+            Math.round((prevQty - qtyToDeduct) * 100) / 100
+          );
+          nextItems[invIdx] = {
+            ...nextItems[invIdx],
+            quantity: resultingQty,
+            usageCount: (nextItems[invIdx].usageCount || 0) + 1,
+            updatedAt: nowIso,
+          };
+          newMovements.push({
+            id: `mov-out-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 5)}`,
+            itemId: nextItems[invIdx].id,
+            sku: nextItems[invIdx].sku,
+            itemName: nextItems[invIdx].name,
+            unit: nextItems[invIdx].unit || 'pz',
+            type: 'scarico',
+            quantity: qtyToDeduct,
+            previousQty: prevQty,
+            resultingQty,
+            reason: `Scarico barcode ${entityLabel} ${record.code}${
+              entry.boxCode ? ` · ${entry.boxCode}` : ''
+            }`,
+            commessaCode: record.commessaCode,
+            operatorName: authUser?.name || 'Operatore',
+            timestamp: nowIso,
+          });
+        } else {
+          newMovements.push({
+            id: `mov-out-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 5)}`,
+            itemId: entry.itemId,
+            sku: entry.sku || record.code,
+            itemName: entry.name,
+            unit: 'pz',
+            type: 'scarico',
+            quantity: qtyToDeduct,
+            previousQty: qtyToDeduct,
+            resultingQty: 0,
+            reason: `Uscita barcode ${entityLabel} ${record.code}${
+              entry.boxCode ? ` · ${entry.boxCode}` : ''
+            }`,
+            commessaCode: record.commessaCode,
+            operatorName: authUser?.name || 'Operatore',
+            timestamp: nowIso,
+          });
+        }
+      });
+
+      handleUpdateInventory({
+        ...inventory,
+        items: nextItems,
+        movements: [...newMovements, ...inventory.movements],
+      });
+    }
+
+    if (isUndo) {
+      showToast(`Annullata uscita di ${record.code} (${record.name})`);
+    } else {
+      const entityLabel =
+        record.type === 'pallet'
+          ? 'Bancale'
+          : record.type === 'box'
+          ? 'Scatola'
+          : 'Oggetto';
+      showToast(
+        `${entityLabel} ${record.code} scaricato in uscita (${affectedItems.length} righe · ${totalPieces} pz)`
+      );
+    }
+
+    return {
+      timestampIso: nowIso,
+      itemsCount: affectedItems.length,
+      piecesCount: totalPieces,
+      warehouseMatchedCount,
+    };
   };
 
   // --- Create New Load (Commessa) ---
@@ -2682,6 +2997,7 @@ export default function App() {
             activeLoad={activeLoad}
             currentUser={authUser}
             onUpdateInventory={handleUpdateInventory}
+            onDispatchTrackingRecord={handleDispatchTrackingRecord}
           />
         ) : null;
       case 'team_share':
@@ -2816,6 +3132,31 @@ export default function App() {
             activeLoad={activeLoad}
           />
         ) : null;
+      case 'pallet_truck_scanner':
+        return authUser ? (
+          <PalletTruckScannerApp
+            loads={loads}
+            activeLoad={activeLoad}
+            inventory={inventory}
+            currentUser={authUser}
+            onSelectLoad={setActiveLoadId}
+            onUpdateInventory={handleUpdateInventory}
+            onAddPallet={handleAddPallet}
+            onAddBox={handleAddBox}
+            onAssignPalletSlot={handleAssignPalletSlot}
+            onTogglePalletWrapped={handleTogglePalletWrapped}
+            onScanPackItemToLoad={handleScanPackItemToLoad}
+            onRenameLoadItemBySku={handleRenameLoadItemBySku}
+            onDispatchTrackingRecord={handleDispatchTrackingRecord}
+          />
+        ) : null;
+      case 'excel_checklist_merger':
+        return (
+          <ExcelChecklistMergerApp
+            activeLoad={activeLoad}
+            onImportItemsToLoad={handleImportMergedChecklistItems}
+          />
+        );
       case 'pallet_weights':
         return (
           <PalletWeightsWorkspace
@@ -2872,7 +3213,9 @@ export default function App() {
             load={activeLoad}
             allLoads={loads}
             movements={inventory.movements}
+            operatorName={authUser?.name}
             onStampEntityDate={handleStampEntityDate}
+            onDispatchTrackingRecord={handleDispatchTrackingRecord}
           />
         );
       default:

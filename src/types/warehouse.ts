@@ -258,6 +258,7 @@ export interface StockMovement {
 export interface WarehouseInventoryState {
   items: WarehouseStockItem[];
   movements: StockMovement[];
+  categories?: string[];
   hiddenCommessaCodes?: string[];
 }
 

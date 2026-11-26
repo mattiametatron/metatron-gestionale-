@@ -443,6 +443,94 @@ export const DesktopAppIcon: React.FC<DesktopAppIconProps> = ({
           </svg>
         );
 
+      /* ---------------- SCANNER CARICO BANCALE & CAMION ---------------- */
+      case 'pallet_truck_scanner':
+        return (
+          <svg viewBox="0 0 64 64" className="w-full h-full block">
+            <defs>
+              <linearGradient id={`${uid}-bg`} x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#1e293b" />
+                <stop offset="55%" stopColor="#0f172a" />
+                <stop offset="100%" stopColor="#020617" />
+              </linearGradient>
+              <linearGradient id={`${uid}-amber`} x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#fde68a" />
+                <stop offset="55%" stopColor="#f59e0b" />
+                <stop offset="100%" stopColor="#d97706" />
+              </linearGradient>
+            </defs>
+            <rect width="64" height="64" fill={`url(#${uid}-bg)`} />
+            <circle cx="50" cy="14" r="20" fill="#f59e0b" fillOpacity="0.22" />
+            {/* Corner scanner brackets */}
+            <path
+              d="M15 22 V15 H22 M42 15 H49 V22 M15 42 V49 H22 M42 49 H49 V42"
+              fill="none"
+              stroke="#fbbf24"
+              strokeWidth="2.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            {/* Barcode bars */}
+            <rect x="20" y="21" width="3" height="16" rx="1" fill="#ffffff" />
+            <rect x="25" y="21" width="1.8" height="16" rx="0.8" fill="#ffffff" />
+            <rect x="29" y="21" width="4" height="16" rx="1" fill="#ffffff" />
+            <rect x="35" y="21" width="2" height="16" rx="0.8" fill="#ffffff" />
+            <rect x="39" y="21" width="3.5" height="16" rx="1" fill="#ffffff" />
+            {/* Laser scan beam */}
+            <rect x="13" y="28.5" width="38" height="2.4" rx="1.2" fill="#f97316" />
+            <rect x="15" y="29.1" width="34" height="1.2" rx="0.6" fill="#fef08a" />
+            {/* Wooden pallet base underneath */}
+            <rect x="18" y="42" width="28" height="3.2" rx="1.2" fill={`url(#${uid}-amber)`} />
+            <rect x="20" y="45.2" width="4.5" height="3.2" rx="0.8" fill="#b45309" />
+            <rect x="29.75" y="45.2" width="4.5" height="3.2" rx="0.8" fill="#b45309" />
+            <rect x="39.5" y="45.2" width="4.5" height="3.2" rx="0.8" fill="#b45309" />
+          </svg>
+        );
+
+      /* ---------------- UNIONE FILE EXCEL CHECK-LIST ---------------- */
+      case 'excel_checklist_merger':
+        return (
+          <svg viewBox="0 0 64 64" className="w-full h-full block">
+            <defs>
+              <linearGradient id={`${uid}-bg`} x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#10b981" />
+                <stop offset="55%" stopColor="#047857" />
+                <stop offset="100%" stopColor="#064e3b" />
+              </linearGradient>
+              <linearGradient id={`${uid}-sheet`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#ffffff" />
+                <stop offset="100%" stopColor="#e2e8f0" />
+              </linearGradient>
+            </defs>
+            <rect width="64" height="64" fill={`url(#${uid}-bg)`} />
+            <circle cx="14" cy="12" r="20" fill="#6ee7b7" fillOpacity="0.22" />
+            {/* Back left Excel sheet */}
+            <rect x="11" y="14" width="24" height="30" rx="4.5" fill="#ecfdf5" fillOpacity="0.82" />
+            <rect x="15" y="20" width="16" height="2.4" rx="1" fill="#059669" fillOpacity="0.45" />
+            <rect x="15" y="25.5" width="12" height="2.4" rx="1" fill="#059669" fillOpacity="0.35" />
+            <rect x="15" y="31" width="14" height="2.4" rx="1" fill="#059669" fillOpacity="0.35" />
+            {/* Front unified master checklist sheet */}
+            <rect x="24" y="18" width="29" height="34" rx="5" fill={`url(#${uid}-sheet)`} />
+            <rect x="24" y="18" width="29" height="9" rx="5" fill="#065f46" />
+            <rect x="24" y="23" width="29" height="4" fill="#065f46" />
+            {/* Grid rows inside unified sheet */}
+            <rect x="29" y="31.5" width="19" height="2.5" rx="1.2" fill="#0f172a" fillOpacity="0.72" />
+            <rect x="29" y="37" width="14" height="2.5" rx="1.2" fill="#0f172a" fillOpacity="0.45" />
+            <rect x="29" y="42.5" width="17" height="2.5" rx="1.2" fill="#0f172a" fillOpacity="0.45" />
+            {/* Unified check badge */}
+            <circle cx="48" cy="46" r="8.5" fill="#0f172a" />
+            <circle cx="48" cy="46" r="7" fill="#10b981" />
+            <path
+              d="M44.6 46.1 L47.1 48.6 L51.8 43.6"
+              fill="none"
+              stroke="#ffffff"
+              strokeWidth="2.3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        );
+
       /* ---------------- DDT & BOLLE (Crisp Document + Verified Seal) ---------------- */
       case 'ddt_documents':
         return (

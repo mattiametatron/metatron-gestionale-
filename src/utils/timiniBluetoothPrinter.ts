@@ -1,5 +1,9 @@
 import QRCode from 'qrcode';
 import jsPDF from 'jspdf';
+import {
+  buildTrackingQrUrl,
+  ResolvedTrackingRecord,
+} from './qrTrackingUtils';
 
 /**
  * Driver Web Bluetooth + motore raster 384px (57mm / 48mm utili, 200 DPI)
@@ -516,29 +520,30 @@ function drawCode39Barcode(
   const sanitized = rawText
     .toUpperCase()
     .replace(/[^0-9A-Z\-.$ /+%]/g, '')
-    .slice(0, 18);
+    .slice(0, 24);
   if (!sanitized) return;
 
   const full = `*${sanitized}*`;
+  const wideUnits = sanitized.length > 16 ? 2 : 3;
   const modules: boolean[] = [];
   for (let c = 0; c < full.length; c++) {
     const pattern = CODE39_PATTERNS[full[c]] || CODE39_PATTERNS['-'];
     for (let i = 0; i < pattern.length; i++) {
       const isBar = i % 2 === 0;
-      const units = pattern[i] === 'w' ? 3 : 1;
+      const units = pattern[i] === 'w' ? wideUnits : 1;
       for (let u = 0; u < units; u++) modules.push(isBar);
     }
     modules.push(false); // spazio tra caratteri
   }
 
-  const unitW = Math.max(1, Math.floor(maxWidth / modules.length));
+  const unitW = Math.max(1, maxWidth / Math.max(1, modules.length));
   const actualW = modules.length * unitW;
-  const startX = Math.floor(x + (maxWidth - actualW) / 2);
+  const startX = x + Math.max(0, (maxWidth - actualW) / 2);
 
   ctx.fillStyle = '#000000';
   for (let i = 0; i < modules.length; i++) {
     if (modules[i]) {
-      ctx.fillRect(startX + i * unitW, y, unitW, barHeight);
+      ctx.fillRect(startX + i * unitW, y, Math.max(1, unitW), barHeight);
     }
   }
 }
@@ -628,7 +633,7 @@ export async function renderTiMiniLabelCanvas(
     calcY += 64;
   }
   if (design.includeQr && (design.qrContent || design.codeText || design.title).trim()) {
-    calcY += 136;
+    calcY += 176;
   }
   if (design.footerText.trim()) calcY += 26;
   calcY += pad + 6;
@@ -731,20 +736,21 @@ export async function renderTiMiniLabelCanvas(
     y += 22;
   }
 
-  // QR Code scansionabile
+  // QR Code scansionabile (168px per lettura immediata anche con URL di tracciamento completi)
   const qrVal = (design.qrContent || design.codeText || design.title).trim();
   if (design.includeQr && qrVal) {
     try {
+      const qrSize = 168;
       const qrDataUrl = await QRCode.toDataURL(qrVal, {
-        width: 128,
+        width: qrSize,
         margin: 1,
-        errorCorrectionLevel: 'M',
+        errorCorrectionLevel: qrVal.length > 100 ? 'L' : 'M',
         color: { dark: '#000000', light: '#ffffff' },
       });
       const qrImg = await loadImage(qrDataUrl);
       if (qrImg) {
-        ctx.drawImage(qrImg, Math.round((width - 128) / 2), y, 128, 128);
-        y += 136;
+        ctx.drawImage(qrImg, Math.round((width - qrSize) / 2), y, qrSize, qrSize);
+        y += qrSize + 8;
       }
     } catch {
       // ignore QR error
@@ -843,4 +849,139 @@ export function printThermalCanvasViaSystemDialog(
       }
     }, 1500);
   }, 250);
+}
+
+/**
+ * Crea un design TiMini 57mm usando ESATTAMENTE lo stesso QR URL (/t?d=...)
+ * e lo stesso Codice a Barre Code-39 (rec.barcodeValue) delle Etichette A4.
+ */
+export function buildTiMiniDesignFromTrackingRecord(
+  rec: ResolvedTrackingRecord
+): TiMiniLabelDesign {
+  const typeLabel =
+    rec.type === 'pallet'
+      ? 'BANCALE'
+      : rec.type === 'box'
+      ? 'SCATOLA'
+      : 'ARTICOLO';
+  const qrUrl = buildTrackingQrUrl(rec);
+  const subtitleParts = [
+    rec.locationPath,
+    rec.quantityText,
+    rec.weightKg > 0 ? `${rec.weightKg.toFixed(1)} kg` : '',
+  ].filter(Boolean);
+
+  return {
+    id: `trk_${rec.type}_${rec.entityId}`,
+    name: `${typeLabel} ${rec.code}`,
+    headerTag: `${typeLabel} · ${rec.commessaCode}`,
+    title: rec.name || `${typeLabel} ${rec.code}`,
+    subtitle: subtitleParts.join(' · '),
+    codeText: rec.code,
+    footerText: `${rec.client !== '—' ? rec.client : rec.commessaTitle} · ${rec.commessaCode}`,
+    includeQr: true,
+    qrContent: qrUrl,
+    includeBarcode: true,
+    barcodeContent: rec.barcodeValue,
+    borderStyle: 'header_banner',
+    heightPreset: 'auto',
+    ditherMode: 'threshold',
+    threshold: 160,
+    fontScale: 'normal',
+    mirrorHorizontal: false,
+  };
+}
+
+/**
+ * Esporta un lotto di targhette TiMini 57mm in un unico PDF multipagina
+ */
+export function downloadThermalBatchPdf(
+  canvases: HTMLCanvasElement[],
+  fileName: string
+): void {
+  if (canvases.length === 0) return;
+  const widthMm = 57;
+  const firstHeightMm = Math.max(
+    25,
+    Math.round((canvases[0].height / TIMINI_PRINT_WIDTH_PX) * 48 + 4)
+  );
+  const doc = new jsPDF({
+    orientation: widthMm >= firstHeightMm ? 'landscape' : 'portrait',
+    unit: 'mm',
+    format: [widthMm, firstHeightMm],
+  });
+
+  canvases.forEach((canvas, idx) => {
+    const hMm = Math.max(
+      25,
+      Math.round((canvas.height / TIMINI_PRINT_WIDTH_PX) * 48 + 4)
+    );
+    if (idx > 0) {
+      doc.addPage([widthMm, hMm], widthMm >= hMm ? 'landscape' : 'portrait');
+    }
+    const dataUrl = canvas.toDataURL('image/png');
+    doc.addImage(dataUrl, 'PNG', 4.5, 2, 48, hMm - 4);
+  });
+
+  doc.save(fileName);
+}
+
+/**
+ * Stampa un lotto di targhette 57mm tramite stampante di sistema Windows/USB
+ */
+export function printThermalBatchViaSystemDialog(
+  canvases: HTMLCanvasElement[]
+): void {
+  if (canvases.length === 0) return;
+  const maxHeightMm = Math.max(
+    ...canvases.map((c) =>
+      Math.max(25, Math.round((c.height / TIMINI_PRINT_WIDTH_PX) * 48 + 4))
+    )
+  );
+
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!doc) {
+    document.body.removeChild(iframe);
+    return;
+  }
+
+  doc.open();
+  doc.write(`<!doctype html><html><head><title>TiMini Print Batch</title><style>
+    @page { size: 57mm ${maxHeightMm}mm; margin: 0; }
+    body { margin: 0; padding: 0; background: #fff; }
+    .page { width: 57mm; min-height: ${maxHeightMm}mm; display: flex; align-items: center; justify-content: center; page-break-after: always; }
+    .page:last-child { page-break-after: auto; }
+    img { width: 48mm; height: auto; image-rendering: pixelated; }
+  </style></head><body></body></html>`);
+  doc.close();
+
+  canvases.forEach((canvas) => {
+    const page = doc.createElement('div');
+    page.className = 'page';
+    const img = doc.createElement('img');
+    img.src = canvas.toDataURL('image/png');
+    page.appendChild(img);
+    doc.body.appendChild(page);
+  });
+
+  setTimeout(() => {
+    iframe.contentWindow?.focus();
+    iframe.contentWindow?.print();
+    setTimeout(() => {
+      try {
+        document.body.removeChild(iframe);
+      } catch {
+        // ignore
+      }
+    }, 1800);
+  }, 300);
 }

@@ -130,7 +130,7 @@ export const MetatronBootSplash: React.FC<MetatronBootSplashProps> = ({
           : 'opacity-100 scale-100'
       }`}
     >
-      <AuroraSilkWallpaper theme="aurora_silk" />
+      <AuroraSilkWallpaper />
 
       {/* Soft centered atmospheric glow behind wordmark */}
       <div

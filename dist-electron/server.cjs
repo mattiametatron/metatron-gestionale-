@@ -223918,9 +223918,15 @@ async function startServer() {
   app.post("/api/inventory", requireAuth, (req, res) => {
     const { inventory } = req.body || {};
     if (inventory && Array.isArray(inventory.items) && Array.isArray(inventory.movements)) {
+      const cleanCategories = Array.isArray(inventory.categories) ? Array.from(
+        new Set(
+          inventory.categories.filter((c) => typeof c === "string").map((c) => c.trim().slice(0, 80)).filter(Boolean)
+        )
+      ).slice(0, 200) : void 0;
       saveUserInventory(req.authUser.id, {
         items: inventory.items,
         movements: inventory.movements,
+        ...cleanCategories !== void 0 ? { categories: cleanCategories } : {},
         hiddenCommessaCodes: Array.isArray(inventory.hiddenCommessaCodes) ? inventory.hiddenCommessaCodes : []
       });
       return res.json({ ok: true });

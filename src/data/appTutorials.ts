@@ -25,7 +25,9 @@ export type TutorialContextId =
   | 'ddt_documents'
   | 'crm_directory'
   | 'purchase_orders'
-  | 'timini_print';
+  | 'timini_print'
+  | 'pallet_truck_scanner'
+  | 'excel_checklist_merger';
 
 export interface TutorialStep {
   title: string;
@@ -468,6 +470,36 @@ export const APP_TUTORIALS: Record<TutorialContextId, AppTutorialDefinition> = {
       {
         title: 'Etichette rapide da Magazzino e Commesse',
         body: 'Importa articoli del Magazzino, bancali o scatole della Commessa in un clic, oppure esporta il PNG 384px / PDF 57mm.',
+      },
+    ],
+  },
+  pallet_truck_scanner: {
+    id: 'pallet_truck_scanner',
+    appTitle: 'Scanner Carico Bancale & Camion',
+    subtitle: 'App dedicata solo al carico/scarico fisico con pistola barcode',
+    steps: [
+      {
+        title: 'Carico su Bancale/Scatola con auto-creazione a q.tà 0',
+        body: 'Scegli il Bancale e la Scatola e spara i barcode. Se un articolo non esiste ancora nel gestionale Magazzino, viene creato automaticamente con quantità 0 così non devi riprendere in mano i pezzi.',
+      },
+      {
+        title: 'Carico sul Camion e Scarico Uscita con Distinta',
+        body: 'Usa la scheda Camion per assegnare i bancali ai posti liberi e la scheda Scarica Uscita per registrare data/ora esatta ed esportare subito la distinta Excel e PDF.',
+      },
+    ],
+  },
+  excel_checklist_merger: {
+    id: 'excel_checklist_merger',
+    appTitle: 'Unione File Excel per Check-List',
+    subtitle: 'Confronta più file Excel e genera un’unica Check-List completa',
+    steps: [
+      {
+        title: 'Carica 2 o quanti Excel vuoi',
+        body: 'Trascina tutti i file Excel (.xlsx, .xls, .csv, .ods). L’app legge le colonne automaticamente e confronta ogni riga tra tutti i file.',
+      },
+      {
+        title: 'Riscrittura automatica senza copia-incolla',
+        body: 'Tutti i materiali mancanti nel primo file vengono aggiunti automaticamente in una sola Check-List pulita da scaricare in Excel/PDF o inviare subito alla commessa attiva.',
       },
     ],
   },

@@ -403,7 +403,12 @@ interface ServerPhotoRecord {
 
 interface UserDataCache {
   loads: any[];
-  inventory: { items: any[]; movements: any[]; hiddenCommessaCodes?: string[] } | null;
+  inventory: {
+    items: any[];
+    movements: any[];
+    categories?: string[];
+    hiddenCommessaCodes?: string[];
+  } | null;
   photos: ServerPhotoRecord[];
   filesState: ServerFileManagerState;
   crmContacts: any[];
@@ -1584,7 +1589,12 @@ async function startServer() {
 
   function saveUserInventory(
     userId: string,
-    inventory: { items: any[]; movements: any[]; hiddenCommessaCodes?: string[] }
+    inventory: {
+      items: any[];
+      movements: any[];
+      categories?: string[];
+      hiddenCommessaCodes?: string[];
+    }
   ) {
     const cache = getUserCache(userId);
     cache.inventory = inventory;
@@ -2377,9 +2387,20 @@ async function startServer() {
       Array.isArray(inventory.items) &&
       Array.isArray(inventory.movements)
     ) {
+      const cleanCategories: string[] | undefined = Array.isArray(inventory.categories)
+        ? Array.from(
+            new Set<string>(
+              (inventory.categories as unknown[])
+                .filter((c): c is string => typeof c === 'string')
+                .map((c) => c.trim().slice(0, 80))
+                .filter(Boolean)
+            )
+          ).slice(0, 200)
+        : undefined;
       saveUserInventory(req.authUser!.id, {
         items: inventory.items,
         movements: inventory.movements,
+        ...(cleanCategories !== undefined ? { categories: cleanCategories } : {}),
         hiddenCommessaCodes: Array.isArray(inventory.hiddenCommessaCodes)
           ? inventory.hiddenCommessaCodes
           : [],

@@ -19,6 +19,24 @@ export interface TrackingContentRow {
   location?: string;
 }
 
+export interface TrackingDetailedItem {
+  itemId: string;
+  sku: string;
+  name: string;
+  category: string;
+  quantity: number;
+  unitWeightKg: number;
+  totalWeightKg: number;
+  palletCode: string | null;
+  boxCode: string | null;
+  boxLabel: string | null;
+  boxPath: string | null;
+  fragile: boolean;
+  notes?: string;
+  loadedAt: string | null;
+  shippedAt: string | null;
+}
+
 export interface ResolvedTrackingRecord {
   type: TrackEntityType;
   entityId: string;
@@ -40,6 +58,7 @@ export interface ResolvedTrackingRecord {
   loadedAt: string | null;
   shippedAt: string | null;
   contents: TrackingContentRow[];
+  detailedItems?: TrackingDetailedItem[];
 }
 
 interface CompactTrackPayload {
@@ -77,7 +96,10 @@ export function buildBarcodeValue(commessaCode: string, entityCode: string): str
   return `${c}-${e}`;
 }
 
-export function formatItDateTime(iso?: string | null): string {
+export function formatItDateTime(
+  iso?: string | null,
+  includeSeconds = false
+): string {
   if (!iso) return 'Non registrata';
   try {
     const d = new Date(iso);
@@ -87,6 +109,10 @@ export function formatItDateTime(iso?: string | null): string {
     const yyyy = d.getFullYear();
     const hh = String(d.getHours()).padStart(2, '0');
     const min = String(d.getMinutes()).padStart(2, '0');
+    if (includeSeconds) {
+      const sec = String(d.getSeconds()).padStart(2, '0');
+      return `${dd}/${mm}/${yyyy} ${hh}:${min}:${sec}`;
+    }
     return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
   } catch {
     return String(iso);
@@ -114,20 +140,62 @@ export function fromDatetimeLocalValue(val: string): string | undefined {
   return d.toISOString();
 }
 
+export function collectBoxTreeIds(
+  boxes: CargoBox[],
+  rootBoxId: string
+): Set<string> {
+  const result = new Set<string>([rootBoxId]);
+  let expanded = true;
+  while (expanded) {
+    expanded = false;
+    for (const b of boxes) {
+      if (b.parentBoxId && result.has(b.parentBoxId) && !result.has(b.id)) {
+        result.add(b.id);
+        expanded = true;
+      }
+    }
+  }
+  return result;
+}
+
+export function collectPalletBoxIds(
+  boxes: CargoBox[],
+  palletId: string
+): Set<string> {
+  const result = new Set<string>(
+    boxes.filter((b) => b.palletId === palletId).map((b) => b.id)
+  );
+  let expanded = true;
+  while (expanded) {
+    expanded = false;
+    for (const b of boxes) {
+      if (b.parentBoxId && result.has(b.parentBoxId) && !result.has(b.id)) {
+        result.add(b.id);
+        expanded = true;
+      }
+    }
+  }
+  return result;
+}
+
 function getBoxChainLabel(box: CargoBox, boxMap: Map<string, CargoBox>): {
   parentBoxCode: string | null;
   boxPath: string;
 } {
-  if (!box.parentBoxId) {
-    return { parentBoxCode: null, boxPath: box.code };
+  const chain: string[] = [box.code];
+  let cursor = box;
+  let guard = 0;
+  while (cursor.parentBoxId && guard < 8) {
+    const parent = boxMap.get(cursor.parentBoxId);
+    if (!parent) break;
+    chain.unshift(parent.code);
+    cursor = parent;
+    guard += 1;
   }
-  const parent = boxMap.get(box.parentBoxId);
-  if (!parent) {
-    return { parentBoxCode: null, boxPath: box.code };
-  }
+  const directParent = box.parentBoxId ? boxMap.get(box.parentBoxId) : null;
   return {
-    parentBoxCode: parent.code,
-    boxPath: `${parent.code} > ${box.code}`,
+    parentBoxCode: directParent?.code || null,
+    boxPath: chain.join(' > '),
   };
 }
 
@@ -164,10 +232,50 @@ export function resolveAllTrackingRecordsForLoad(
   const boxMap = new Map<string, CargoBox>(load.boxes.map((b) => [b.id, b]));
   const handoverAt = load.handoverProof?.handoverAt || null;
 
+  const buildDetailedItem = (
+    item: ChecklistItem,
+    fallbackPalletCode: string | null
+  ): TrackingDetailedItem => {
+    const box = item.boxId ? boxMap.get(item.boxId) || null : null;
+    const boxChain = box ? getBoxChainLabel(box, boxMap) : null;
+    const resolvedPalletId = box?.palletId || item.palletId || null;
+    const pallet = resolvedPalletId ? palletMap.get(resolvedPalletId) || null : null;
+    const unitWeightKg = Number(item.unitWeightKg) || 0;
+    const qty = Number(item.quantity) || 0;
+    const itemLoadedAt =
+      item.loadedAt || box?.loadedAt || pallet?.loadedAt || load.loadedAt || null;
+    const itemShippedAt =
+      item.shippedAt ||
+      box?.shippedAt ||
+      pallet?.shippedAt ||
+      load.shippedAt ||
+      handoverAt ||
+      findMatchingScaricoTimestamp(movements, load.code, item.sku, 'sku') ||
+      null;
+
+    return {
+      itemId: item.id,
+      sku: item.sku || `ART-${item.id.slice(-4).toUpperCase()}`,
+      name: item.name || 'Articolo',
+      category: item.category || 'Generale',
+      quantity: qty,
+      unitWeightKg,
+      totalWeightKg: Math.round(qty * unitWeightKg * 100) / 100,
+      palletCode: pallet?.code || fallbackPalletCode,
+      boxCode: box?.code || null,
+      boxLabel: box?.label || null,
+      boxPath: boxChain?.boxPath || box?.code || null,
+      fragile: Boolean(item.fragile || box?.fragile),
+      notes: item.notes,
+      loadedAt: itemLoadedAt,
+      shippedAt: itemShippedAt,
+    };
+  };
+
   // 1. BANCALI
   load.pallets.forEach((pallet) => {
-    const palletBoxes = load.boxes.filter((b) => b.palletId === pallet.id);
-    const palletBoxIds = new Set(palletBoxes.map((b) => b.id));
+    const palletBoxIds = collectPalletBoxIds(load.boxes, pallet.id);
+    const palletBoxes = load.boxes.filter((b) => palletBoxIds.has(b.id));
     const palletItems = load.items.filter(
       (it) => it.palletId === pallet.id || (it.boxId && palletBoxIds.has(it.boxId))
     );
@@ -207,7 +315,8 @@ export function resolveAllTrackingRecordsForLoad(
 
     const contents: TrackingContentRow[] = [
       ...palletBoxes.map((b) => {
-        const bItems = load.items.filter((i) => i.boxId === b.id);
+        const subBoxIds = collectBoxTreeIds(load.boxes, b.id);
+        const bItems = load.items.filter((i) => i.boxId && subBoxIds.has(i.boxId));
         const bPcs = bItems.reduce((acc, i) => acc + i.quantity, 0);
         return {
           code: b.code,
@@ -225,6 +334,10 @@ export function resolveAllTrackingRecordsForLoad(
           location: 'Fuori Scatola',
         })),
     ];
+
+    const detailedItems = palletItems.map((it) =>
+      buildDetailedItem(it, pallet.code)
+    );
 
     records.push({
       type: 'pallet',
@@ -247,6 +360,7 @@ export function resolveAllTrackingRecordsForLoad(
       loadedAt,
       shippedAt,
       contents,
+      detailedItems,
     });
   });
 
@@ -254,10 +368,15 @@ export function resolveAllTrackingRecordsForLoad(
   load.boxes.forEach((box) => {
     const pallet = box.palletId ? palletMap.get(box.palletId) || null : null;
     const { parentBoxCode, boxPath } = getBoxChainLabel(box, boxMap);
-    const boxItems = load.items.filter((i) => i.boxId === box.id);
+    const boxTreeIds = collectBoxTreeIds(load.boxes, box.id);
+    const nestedBoxes = load.boxes.filter(
+      (b) => b.id !== box.id && boxTreeIds.has(b.id)
+    );
+    const boxItems = load.items.filter((i) => i.boxId && boxTreeIds.has(i.boxId));
     const totalPieces = boxItems.reduce((acc, i) => acc + (i.quantity || 0), 0);
     const boxWeight =
       (box.tareKg || 0) +
+      nestedBoxes.reduce((acc, b) => acc + (b.tareKg || 0), 0) +
       boxItems.reduce((acc, i) => acc + (i.quantity || 0) * (i.unitWeightKg || 0), 0);
 
     const proofForBox = (load.packingProofs || []).find(
@@ -284,6 +403,10 @@ export function resolveAllTrackingRecordsForLoad(
       ? `${pallet.code} > ${boxPath}`
       : `A Terra > ${boxPath}`;
 
+    const detailedItems = boxItems.map((it) =>
+      buildDetailedItem(it, pallet?.code || null)
+    );
+
     records.push({
       type: 'box',
       entityId: box.id,
@@ -304,12 +427,16 @@ export function resolveAllTrackingRecordsForLoad(
       weightKg: Math.round(boxWeight * 100) / 100,
       loadedAt,
       shippedAt,
-      contents: boxItems.map((it) => ({
-        code: it.sku,
-        name: it.name,
-        quantity: it.quantity,
-        location: box.code,
-      })),
+      contents: boxItems.map((it) => {
+        const itBox = it.boxId ? boxMap.get(it.boxId) : null;
+        return {
+          code: it.sku,
+          name: it.name,
+          quantity: it.quantity,
+          location: itBox ? itBox.code : box.code,
+        };
+      }),
+      detailedItems,
     });
   });
 

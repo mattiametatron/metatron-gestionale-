@@ -13,6 +13,8 @@ import {
   Scale,
   QrCode,
   CalendarClock,
+  FileSpreadsheet,
+  FileText,
 } from 'lucide-react';
 import { CargoLoad, StockMovement } from '../types/warehouse';
 import {
@@ -20,7 +22,12 @@ import {
   formatItDateTime,
   resolveAllTrackingRecordsForLoad,
   ResolvedTrackingRecord,
+  TrackingDetailedItem,
 } from '../utils/qrTrackingUtils';
+import {
+  downloadOutboundManifestExcel,
+  downloadOutboundManifestPdf,
+} from '../utils/outboundManifestExporter';
 import { authFetch, getAuthToken } from '../utils/authSession';
 
 interface QrTrackingScanViewProps {
@@ -418,7 +425,7 @@ export const QrTrackingScanView: React.FC<QrTrackingScanViewProps> = ({
                   Preparazione bancale per spedizione
                 </div>
                 <div className="mt-1.5 font-mono tabular-nums text-sm font-bold text-slate-900">
-                  {formatItDateTime(record.loadedAt)}
+                  {formatItDateTime(record.loadedAt, true)}
                 </div>
               </div>
               <button
@@ -444,7 +451,7 @@ export const QrTrackingScanView: React.FC<QrTrackingScanViewProps> = ({
                   Uscita / Spedizione effettuata
                 </div>
                 <div className="mt-1.5 font-mono tabular-nums text-sm font-bold text-slate-900">
-                  {formatItDateTime(record.shippedAt)}
+                  {formatItDateTime(record.shippedAt, true)}
                 </div>
               </div>
               <button
@@ -468,58 +475,184 @@ export const QrTrackingScanView: React.FC<QrTrackingScanViewProps> = ({
           )}
         </div>
 
-        {/* CONTENUTO (se è stato scansionato un Bancale o una Scatola) */}
-        {record.contents && record.contents.length > 0 && (
-          <div className="border border-slate-200 rounded-lg overflow-hidden">
-            <div className="bg-slate-50 px-3.5 py-2 border-b border-slate-200 text-xs font-bold text-slate-700 flex items-center justify-between">
-              <span>
-                Contenuto all&apos;interno ({record.contents.length})
-              </span>
-              <span className="font-mono text-[11px] text-slate-500">
-                Tot. {record.quantityNumber} pz
-              </span>
-            </div>
-            <div className="divide-y divide-slate-100 max-h-56 overflow-y-auto">
-              {record.contents.map((row, idx) => (
-                <div
-                  key={`${row.code}-${idx}`}
-                  className="px-3.5 py-2 flex items-center justify-between gap-2 text-xs"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-slate-900">
-                        {row.code}
-                      </span>
-                      {row.location && (
-                        <span className="text-[11px] text-slate-500">
-                          · {row.location}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-slate-700 truncate">{row.name}</div>
-                  </div>
-                  <div className="font-mono font-bold tabular-nums text-slate-900 shrink-0">
-                    {row.quantity} pz
-                  </div>
+        {/* CONTENUTO COMPLETO (Bancale -> Scatole -> Articoli + Fuori Scatola) */}
+        {(() => {
+          const detailed = record.detailedItems || [];
+          if (detailed.length > 0) {
+            const groups = new Map<
+              string,
+              { key: string; title: string; isBox: boolean; items: TrackingDetailedItem[] }
+            >();
+            detailed.forEach((it) => {
+              const key = it.boxCode ? `box:${it.boxPath || it.boxCode}` : 'loose';
+              const title = it.boxCode
+                ? `${it.boxPath || it.boxCode}${it.boxLabel ? ` — ${it.boxLabel}` : ''}`
+                : 'Fuori scatola sul bancale';
+              const existing = groups.get(key);
+              if (existing) existing.items.push(it);
+              else groups.set(key, { key, title, isBox: Boolean(it.boxCode), items: [it] });
+            });
+            const groupList = Array.from(groups.values());
+            return (
+              <div className="border border-slate-200 rounded-lg overflow-hidden">
+                <div className="bg-slate-50 px-3.5 py-2 border-b border-slate-200 text-xs font-bold text-slate-700 flex items-center justify-between">
+                  <span>
+                    Contenuto completo ({detailed.length} righe · {groupList.length}{' '}
+                    {groupList.length === 1 ? 'gruppo' : 'gruppi'})
+                  </span>
+                  <span className="font-mono text-[11px] text-slate-500">
+                    Tot. {record.quantityNumber} pz
+                  </span>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
+                <div className="divide-y divide-slate-200 max-h-64 overflow-y-auto">
+                  {groupList.map((grp) => (
+                    <div key={grp.key}>
+                      <div className="px-3.5 py-1.5 bg-slate-100/80 text-[11px] font-bold text-slate-700 flex items-center justify-between">
+                        <span className="flex items-center gap-1.5">
+                          {grp.isBox ? (
+                            <Box className="w-3 h-3 text-blue-700" />
+                          ) : (
+                            <Package className="w-3 h-3 text-slate-600" />
+                          )}
+                          <span>{grp.title}</span>
+                        </span>
+                        <span className="font-mono">
+                          {grp.items.reduce((a, b) => a + b.quantity, 0)} pz
+                        </span>
+                      </div>
+                      <div className="divide-y divide-slate-100">
+                        {grp.items.map((it) => (
+                          <div
+                            key={it.itemId}
+                            className="px-3.5 py-2 flex items-center justify-between gap-2 text-xs"
+                          >
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-bold text-slate-900">
+                                  {it.sku}
+                                </span>
+                                <span className="text-[11px] font-mono text-slate-500">
+                                  {it.totalWeightKg.toFixed(1)} kg
+                                </span>
+                              </div>
+                              <div className="text-slate-700 truncate">{it.name}</div>
+                            </div>
+                            <div className="font-mono font-bold tabular-nums text-slate-900 shrink-0">
+                              {it.quantity} pz
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          }
 
-        {/* Footer Azione */}
-        {onClose && (
-          <div className="pt-2 flex justify-end">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>{isModal ? 'Chiudi Scheda Scansione' : 'Apri CaricoStudio Completo'}</span>
-            </button>
-          </div>
-        )}
+          if (record.contents && record.contents.length > 0) {
+            return (
+              <div className="border border-slate-200 rounded-lg overflow-hidden">
+                <div className="bg-slate-50 px-3.5 py-2 border-b border-slate-200 text-xs font-bold text-slate-700 flex items-center justify-between">
+                  <span>
+                    Contenuto all&apos;interno ({record.contents.length})
+                  </span>
+                  <span className="font-mono text-[11px] text-slate-500">
+                    Tot. {record.quantityNumber} pz
+                  </span>
+                </div>
+                <div className="divide-y divide-slate-100 max-h-56 overflow-y-auto">
+                  {record.contents.map((row, idx) => (
+                    <div
+                      key={`${row.code}-${idx}`}
+                      className="px-3.5 py-2 flex items-center justify-between gap-2 text-xs"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-slate-900">
+                            {row.code}
+                          </span>
+                          {row.location && (
+                            <span className="text-[11px] text-slate-500">
+                              · {row.location}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-slate-700 truncate">{row.name}</div>
+                      </div>
+                      <div className="font-mono font-bold tabular-nums text-slate-900 shrink-0">
+                        {row.quantity} pz
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          }
+          return null;
+        })()}
+
+        {/* Footer Azioni: Distinta Excel/PDF + Chiudi */}
+        {(() => {
+          const matchedLoad = localLoads?.find(
+            (l) =>
+              l.code.trim().toUpperCase() ===
+              record.commessaCode.trim().toUpperCase()
+          );
+          return (
+            <div className="pt-2 flex flex-wrap items-center justify-between gap-2">
+              {matchedLoad ? (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      downloadOutboundManifestExcel(
+                        matchedLoad,
+                        localMovements || [],
+                        { onlyShipped: false, filterRecord: record }
+                      )
+                    }
+                    className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    <span>Distinta Excel</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      downloadOutboundManifestPdf(
+                        matchedLoad,
+                        localMovements || [],
+                        { onlyShipped: false, filterRecord: record }
+                      )
+                    }
+                    className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Distinta PDF</span>
+                  </button>
+                </div>
+              ) : (
+                <div />
+              )}
+
+              {onClose && (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>
+                    {isModal
+                      ? 'Chiudi Scheda Scansione'
+                      : 'Apri CaricoStudio Completo'}
+                  </span>
+                </button>
+              )}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

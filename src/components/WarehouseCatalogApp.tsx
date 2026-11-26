@@ -29,6 +29,11 @@ import {
   ArrowUpDown,
   FileSpreadsheet,
   SlidersHorizontal,
+  Check,
+  Tag,
+  Box,
+  Truck,
+  Clock,
 } from 'lucide-react';
 import {
   AuthUser,
@@ -38,13 +43,34 @@ import {
   WarehouseItemAttachment,
   WarehouseStockItem,
 } from '../types/warehouse';
+import {
+  formatItDateTime,
+  lookupScannedCodeAcrossLoads,
+  resolveAllTrackingRecordsForLoad,
+  ResolvedTrackingRecord,
+  TrackEntityType,
+  TrackingDetailedItem,
+} from '../utils/qrTrackingUtils';
+import {
+  downloadOutboundManifestExcel,
+  downloadOutboundManifestPdf,
+} from '../utils/outboundManifestExporter';
 
 interface WarehouseCatalogAppProps {
   inventory: WarehouseInventoryState;
   loads: CargoLoad[];
-  activeLoad: CargoLoad;
+  activeLoad?: CargoLoad;
   currentUser: AuthUser;
   onUpdateInventory: (next: WarehouseInventoryState, notice?: string) => void;
+  onDispatchTrackingRecord?: (
+    record: ResolvedTrackingRecord,
+    options?: { syncWarehouse?: boolean; undo?: boolean }
+  ) => {
+    timestampIso?: string;
+    itemsCount: number;
+    piecesCount: number;
+    warehouseMatchedCount: number;
+  };
 }
 
 interface SessionScanEntry {
@@ -67,15 +93,7 @@ interface SessionScanEntry {
 type WarehouseTab = 'catalog' | 'pos' | 'favorites' | 'low_stock' | 'history';
 type CatalogSort = 'name_asc' | 'qty_asc' | 'qty_desc' | 'used_desc' | 'updated_desc';
 
-const DEFAULT_CATEGORIES = [
-  'Ferramenta & Minuteria',
-  'Elettrico & Sensori',
-  'Meccanica & Ricambi',
-  'Imballaggio & Scatole',
-  'Consumabili',
-  'Vernici & Chimica',
-  'Generale',
-];
+const UNCATEGORIZED_KEY = '__uncategorized__';
 
 const UNITS = ['pz', 'kg', 'm', 'scatole', 'rotoli', 'litri', 'bancali', 'kit'];
 
@@ -189,21 +207,20 @@ function playScannerBeep(kind: 'in' | 'out' | 'new' | 'warn') {
 export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
   inventory,
   loads,
-  activeLoad,
   currentUser,
   onUpdateInventory,
+  onDispatchTrackingRecord,
 }) => {
   const [activeTab, setActiveTab] = useState<WarehouseTab>('catalog');
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   const [sortBy, setSortBy] = useState<CatalogSort>('name_asc');
 
   // USB / Keyboard Barcode Terminal State (zero camera)
+  // Il magazzino è sempre aziendale/generale: l'associazione a un MTR è facoltativa
   const [scanMode, setScanMode] = useState<'carico' | 'scarico'>('carico');
   const [scanCodeInput, setScanCodeInput] = useState('');
   const [scanQty, setScanQty] = useState<number>(1);
-  const [scanCommessaCode, setScanCommessaCode] = useState<string>(
-    activeLoad?.code || ''
-  );
+  const [scanCommessaCode, setScanCommessaCode] = useState<string>('');
   const [autoFocusScanner, setAutoFocusScanner] = useState<boolean>(true);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [sessionLog, setSessionLog] = useState<SessionScanEntry[]>([]);
@@ -215,6 +232,11 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
     unit?: string;
     lowStock?: boolean;
   } | null>(null);
+  const [matchedCommessaRef, setMatchedCommessaRef] = useState<{
+    commessaCode: string;
+    type: TrackEntityType;
+    entityId: string;
+  } | null>(null);
 
   // Catalog & History Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -224,6 +246,17 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
   );
   const [historySearch, setHistorySearch] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // Gestione Categorie personalizzate dall'utente (Crea / Rinomina / Elimina)
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
+  const [sidebarAddingCategory, setSidebarAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [categoryError, setCategoryError] = useState<string | null>(null);
+  const [renamingCategory, setRenamingCategory] = useState<string | null>(null);
+  const [renameCategoryValue, setRenameCategoryValue] = useState('');
+  const [confirmDeleteCategory, setConfirmDeleteCategory] = useState<string | null>(null);
+  const [editorAddingCategory, setEditorAddingCategory] = useState(false);
+  const [editorNewCategoryName, setEditorNewCategoryName] = useState('');
 
   // Side Inspector Drawer + Quick Custom Movement inside Drawer
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
@@ -238,7 +271,7 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
   const [formSku, setFormSku] = useState('');
   const [formBarcode, setFormBarcode] = useState('');
   const [formName, setFormName] = useState('');
-  const [formCategory, setFormCategory] = useState(DEFAULT_CATEGORIES[0]);
+  const [formCategory, setFormCategory] = useState('');
   const [formUnit, setFormUnit] = useState('pz');
   const [formQty, setFormQty] = useState<number>(1);
   const [formMinStock, setFormMinStock] = useState<number>(5);
@@ -254,10 +287,6 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
 
   const scannerInputRef = useRef<HTMLInputElement | null>(null);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    setScanCommessaCode((prev) => prev || activeLoad?.code || '');
-  }, [activeLoad?.code]);
 
   // Keep USB barcode wedge input focused in POS mode
   useEffect(() => {
@@ -292,21 +321,38 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
   }, [movements, selectedItem]);
 
   const categories = useMemo(() => {
-    const set = new Set<string>(DEFAULT_CATEGORIES);
-    items.forEach((it) => {
-      if (it.category?.trim()) set.add(it.category.trim());
-    });
-    return Array.from(set);
-  }, [items]);
+    const list: string[] = [];
+    const seen = new Set<string>();
+    const addUnique = (raw?: string) => {
+      const clean = (raw || '').trim();
+      if (!clean) return;
+      const key = clean.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      list.push(clean);
+    };
+    if (Array.isArray(inventory.categories)) {
+      inventory.categories.forEach((c) => addUnique(c));
+    }
+    items.forEach((it) => addUnique(it.category));
+    return list;
+  }, [inventory.categories, items]);
 
   const categoryCounts = useMemo(() => {
     const counts = new Map<string, number>();
     items.forEach((it) => {
-      const key = (it.category || 'Generale').trim();
-      counts.set(key, (counts.get(key) || 0) + 1);
+      const key = (it.category || '').trim();
+      if (!key) return;
+      const match = categories.find((c) => c.toLowerCase() === key.toLowerCase()) || key;
+      counts.set(match, (counts.get(match) || 0) + 1);
     });
     return counts;
-  }, [items]);
+  }, [items, categories]);
+
+  const uncategorizedCount = useMemo(
+    () => items.filter((it) => !(it.category || '').trim()).length,
+    [items]
+  );
 
   const lowStockItems = useMemo(
     () => items.filter((it) => it.quantity <= it.minStock),
@@ -354,7 +400,12 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
     const q = searchQuery.trim().toLowerCase();
     const list = items.filter((it) => {
       if (activeTab === 'low_stock' && it.quantity > it.minStock) return false;
-      if (categoryFilter !== 'all' && it.category !== categoryFilter) return false;
+      const itemCat = (it.category || '').trim();
+      if (categoryFilter === UNCATEGORIZED_KEY) {
+        if (itemCat !== '') return false;
+      } else if (categoryFilter !== 'all') {
+        if (itemCat.toLowerCase() !== categoryFilter.toLowerCase()) return false;
+      }
       if (q) {
         const hay = `${it.name} ${it.sku} ${it.barcode || ''} ${it.location || ''} ${it.supplier || ''} ${it.category || ''}`.toLowerCase();
         if (!hay.includes(q)) return false;
@@ -556,7 +607,9 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
       );
       setFormName('');
       setFormCategory(
-        categoryFilter !== 'all' ? categoryFilter : DEFAULT_CATEGORIES[0]
+        categoryFilter !== 'all' && categoryFilter !== UNCATEGORIZED_KEY
+          ? categoryFilter
+          : ''
       );
       setFormUnit('pz');
       setFormQty(Math.max(1, scanQty || 1));
@@ -568,6 +621,8 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
       setFormPhoto('');
       setFormAttachments([]);
       setFormError(null);
+      setEditorAddingCategory(false);
+      setEditorNewCategoryName('');
       setEditorOpen(true);
     },
     [items.length, scanQty, categoryFilter]
@@ -579,7 +634,7 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
     setFormSku(item.sku);
     setFormBarcode(item.barcode || '');
     setFormName(item.name);
-    setFormCategory(item.category || DEFAULT_CATEGORIES[0]);
+    setFormCategory((item.category || '').trim());
     setFormUnit(item.unit || 'pz');
     setFormQty(item.quantity);
     setFormMinStock(item.minStock);
@@ -590,8 +645,55 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
     setFormPhoto(item.photoDataUrl || '');
     setFormAttachments(item.attachments ? [...item.attachments] : []);
     setFormError(null);
+    setEditorAddingCategory(false);
+    setEditorNewCategoryName('');
     setEditorOpen(true);
   };
+
+  const matchedCommessaLoad = useMemo<CargoLoad | null>(() => {
+    if (!matchedCommessaRef) return null;
+    return (
+      loads.find(
+        (l) =>
+          (l.code || '').trim().toUpperCase() ===
+          matchedCommessaRef.commessaCode.trim().toUpperCase()
+      ) || null
+    );
+  }, [matchedCommessaRef, loads]);
+
+  const matchedCommessaRecord = useMemo<ResolvedTrackingRecord | null>(() => {
+    if (!matchedCommessaRef || !matchedCommessaLoad) return null;
+    const recs = resolveAllTrackingRecordsForLoad(matchedCommessaLoad, movements);
+    return (
+      recs.find(
+        (r) =>
+          r.type === matchedCommessaRef.type &&
+          r.entityId === matchedCommessaRef.entityId
+      ) || null
+    );
+  }, [matchedCommessaRef, matchedCommessaLoad, movements]);
+
+  const matchedCommessaGroups = useMemo(() => {
+    if (!matchedCommessaRecord) return [];
+    const detailed = matchedCommessaRecord.detailedItems || [];
+    const map = new Map<
+      string,
+      { key: string; title: string; isBox: boolean; items: TrackingDetailedItem[] }
+    >();
+    detailed.forEach((item) => {
+      const key = item.boxCode ? `box:${item.boxPath || item.boxCode}` : 'loose';
+      const title = item.boxCode
+        ? `${item.boxPath || item.boxCode}${item.boxLabel ? ` — ${item.boxLabel}` : ''}`
+        : 'Fuori scatola sul bancale';
+      const existing = map.get(key);
+      if (existing) {
+        existing.items.push(item);
+      } else {
+        map.set(key, { key, title, isBox: Boolean(item.boxCode), items: [item] });
+      }
+    });
+    return Array.from(map.values());
+  }, [matchedCommessaRecord]);
 
   const processScannedCode = useCallback(
     (rawCode: string) => {
@@ -599,6 +701,7 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
       if (!code) return;
       const found = findItemByCode(code);
       if (found) {
+        setMatchedCommessaRef(null);
         applyStockMovement(
           found,
           scanMode,
@@ -608,12 +711,59 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
             : 'Uscita da lettore barcode USB'
         );
       } else {
-        if (soundEnabled) playScannerBeep('new');
-        openNewItemModal(code, true);
+        // Verifica se il barcode/QR appartiene a un Bancale, Scatola o Oggetto di una Commessa (TiMini / Etichette A4)
+        const trackedMatch = lookupScannedCodeAcrossLoads(code, loads, movements);
+        if (trackedMatch) {
+          setMatchedCommessaRef({
+            commessaCode: trackedMatch.commessaCode,
+            type: trackedMatch.type,
+            entityId: trackedMatch.entityId,
+          });
+          const labelType =
+            trackedMatch.type === 'pallet'
+              ? 'Bancale'
+              : trackedMatch.type === 'box'
+              ? 'Scatola'
+              : 'Oggetto';
+
+          if (scanMode === 'scarico' && onDispatchTrackingRecord) {
+            const res = onDispatchTrackingRecord(trackedMatch, {
+              syncWarehouse: true,
+              undo: false,
+            });
+            if (soundEnabled) playScannerBeep('out');
+            setLastScannedBanner({
+              kind: 'out',
+              title: `${labelType} ${trackedMatch.code} scaricato in uscita`,
+              detail: `Commessa ${trackedMatch.commessaCode} · ${res.itemsCount} righe (${res.piecesCount} pz) · ${formatItDateTime(res.timestampIso, true)}`,
+            });
+          } else {
+            if (soundEnabled) playScannerBeep('in');
+            setLastScannedBanner({
+              kind: 'in',
+              title: `${labelType} ${trackedMatch.code} riconosciuto (${trackedMatch.commessaCode})`,
+              detail: `${trackedMatch.quantityText} · Contenuto completo visibile qui sotto`,
+            });
+          }
+        } else {
+          setMatchedCommessaRef(null);
+          if (soundEnabled) playScannerBeep('new');
+          openNewItemModal(code, true);
+        }
       }
       setScanCodeInput('');
     },
-    [findItemByCode, applyStockMovement, scanMode, scanQty, soundEnabled, openNewItemModal]
+    [
+      findItemByCode,
+      applyStockMovement,
+      scanMode,
+      scanQty,
+      loads,
+      movements,
+      onDispatchTrackingRecord,
+      soundEnabled,
+      openNewItemModal,
+    ]
   );
 
   const handleScanSubmit = (e: React.FormEvent) => {
@@ -670,6 +820,107 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
     );
     setConfirmDeleteId(null);
     if (selectedItemId === itemId) setSelectedItemId(null);
+  };
+
+  // CRUD Categorie personalizzate dall'utente
+  const handleAddCategory = (rawName: string): string | null => {
+    const clean = rawName.trim().slice(0, 80);
+    if (!clean) {
+      setCategoryError('Inserisci un nome per la categoria.');
+      return null;
+    }
+    if (categories.some((c) => c.toLowerCase() === clean.toLowerCase())) {
+      setCategoryError('Esiste già una categoria con questo nome.');
+      return null;
+    }
+    const nextCategories = [...categories, clean];
+    onUpdateInventory(
+      {
+        ...inventory,
+        categories: nextCategories,
+      },
+      `Categoria "${clean}" creata`
+    );
+    setCategoryError(null);
+    return clean;
+  };
+
+  const handleRenameCategory = (oldName: string, newRawName: string): boolean => {
+    const clean = newRawName.trim().slice(0, 80);
+    if (!clean) {
+      setCategoryError('Il nome della categoria non può essere vuoto.');
+      return false;
+    }
+    if (clean === oldName) {
+      setRenamingCategory(null);
+      setRenameCategoryValue('');
+      setCategoryError(null);
+      return true;
+    }
+    if (
+      categories.some(
+        (c) => c.toLowerCase() !== oldName.toLowerCase() && c.toLowerCase() === clean.toLowerCase()
+      )
+    ) {
+      setCategoryError('Esiste già una categoria con questo nome.');
+      return false;
+    }
+    const nowIso = new Date().toISOString();
+    const nextCategories = categories.map((c) =>
+      c.toLowerCase() === oldName.toLowerCase() ? clean : c
+    );
+    const nextItems = items.map((it) =>
+      (it.category || '').trim().toLowerCase() === oldName.toLowerCase()
+        ? { ...it, category: clean, updatedAt: nowIso }
+        : it
+    );
+    onUpdateInventory(
+      {
+        ...inventory,
+        categories: nextCategories,
+        items: nextItems,
+      },
+      `Categoria rinominata in "${clean}"`
+    );
+    if (categoryFilter.toLowerCase() === oldName.toLowerCase()) {
+      setCategoryFilter(clean);
+    }
+    if (formCategory.toLowerCase() === oldName.toLowerCase()) {
+      setFormCategory(clean);
+    }
+    setRenamingCategory(null);
+    setRenameCategoryValue('');
+    setCategoryError(null);
+    return true;
+  };
+
+  const handleDeleteCategory = (targetName: string) => {
+    const nowIso = new Date().toISOString();
+    const nextCategories = categories.filter(
+      (c) => c.toLowerCase() !== targetName.toLowerCase()
+    );
+    const nextItems = items.map((it) =>
+      (it.category || '').trim().toLowerCase() === targetName.toLowerCase()
+        ? { ...it, category: '', updatedAt: nowIso }
+        : it
+    );
+    onUpdateInventory(
+      {
+        ...inventory,
+        categories: nextCategories,
+        items: nextItems,
+      },
+      `Categoria "${targetName}" eliminata (gli articoli restano in magazzino)`
+    );
+    if (categoryFilter.toLowerCase() === targetName.toLowerCase()) {
+      setCategoryFilter('all');
+    }
+    if (formCategory.toLowerCase() === targetName.toLowerCase()) {
+      setFormCategory('');
+    }
+    setConfirmDeleteCategory(null);
+    setRenamingCategory(null);
+    setCategoryError(null);
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -827,6 +1078,11 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
     const nowIso = new Date().toISOString();
     const qtyNum = Math.max(0, Number(formQty) || 0);
     const minStockNum = Math.max(0, Number(formMinStock) || 0);
+    const cleanCategory = formCategory.trim().slice(0, 80);
+    const nextCategories =
+      cleanCategory && !categories.some((c) => c.toLowerCase() === cleanCategory.toLowerCase())
+        ? [...categories, cleanCategory]
+        : categories;
 
     if (editingItemId) {
       const prevItem = items.find((i) => i.id === editingItemId);
@@ -837,7 +1093,7 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
               sku: cleanSku,
               barcode: cleanBarcode || undefined,
               name: cleanName,
-              category: formCategory.trim() || 'Generale',
+              category: cleanCategory,
               unit: formUnit || 'pz',
               quantity: qtyNum,
               minStock: minStockNum,
@@ -866,7 +1122,7 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
           previousQty: prevItem.quantity,
           resultingQty: qtyNum,
           reason: 'Rettifica manuale giacenza',
-          commessaCode: scanCommessaCode.trim() || undefined,
+          commessaCode: undefined,
           operatorName: currentUser.name,
           timestamp: nowIso,
         };
@@ -878,6 +1134,7 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
           ...inventory,
           items: nextItems,
           movements: nextMovements,
+          categories: nextCategories,
         },
         `Articolo "${cleanName}" aggiornato`
       );
@@ -891,7 +1148,7 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
       sku: cleanSku,
       barcode: cleanBarcode || undefined,
       name: cleanName,
-      category: formCategory.trim() || 'Generale',
+      category: cleanCategory,
       unit: formUnit || 'pz',
       quantity: qtyNum,
       minStock: minStockNum,
@@ -921,7 +1178,7 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
             reason: isFromUnknownScan
               ? 'Nuovo articolo registrato da lettore barcode'
               : 'Inserimento nuovo articolo in magazzino',
-            commessaCode: scanCommessaCode.trim() || undefined,
+            commessaCode: isFromUnknownScan ? scanCommessaCode.trim() || undefined : undefined,
             operatorName: currentUser.name,
             timestamp: nowIso,
           }
@@ -932,6 +1189,7 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
         ...inventory,
         items: [newItem, ...items],
         movements: initMov ? [initMov, ...movements] : movements,
+        categories: nextCategories,
       },
       `Articolo "${cleanName}" salvato (${qtyNum} ${newItem.unit})`
     );
@@ -1020,9 +1278,14 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
           <div className="w-7 h-7 rounded-lg bg-slate-900 text-orange-400 flex items-center justify-center shrink-0">
             <Package className="w-4 h-4" />
           </div>
-          <span className="text-sm font-bold text-slate-900 tracking-tight truncate">
-            Magazzino
-          </span>
+          <div className="min-w-0">
+            <div className="text-sm font-bold text-slate-900 tracking-tight truncate">
+              Magazzino Aziendale
+            </div>
+            <div className="text-[10px] text-slate-500 truncate">
+              Sempre attivo · indipendente dagli MTR
+            </div>
+          </div>
         </div>
 
         {/* Navigazione principale */}
@@ -1067,20 +1330,91 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
           })}
         </nav>
 
-        {/* Categorie rapide nella sidebar (desktop) */}
+        {/* Categorie personalizzate nella sidebar (desktop) */}
         <div className="hidden md:flex flex-col flex-1 min-h-0 border-t border-slate-200 mt-1">
-          <div className="px-4 pt-3 pb-1.5 text-[11px] font-semibold text-slate-400 flex items-center justify-between">
-            <span>Categorie</span>
-            {categoryFilter !== 'all' && (
+          <div className="px-3.5 pt-3 pb-1.5 text-[11px] font-semibold text-slate-500 flex items-center justify-between gap-1">
+            <span>Le tue categorie</span>
+            <div className="flex items-center gap-1">
               <button
                 type="button"
-                onClick={() => setCategoryFilter('all')}
-                className="text-orange-600 hover:underline cursor-pointer font-medium"
+                onClick={() => {
+                  setSidebarAddingCategory((v) => !v);
+                  setNewCategoryName('');
+                  setCategoryError(null);
+                }}
+                className="p-1 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 cursor-pointer transition-colors"
+                title="Crea nuova categoria"
               >
-                Tutte
+                <Plus className="w-3.5 h-3.5" />
               </button>
-            )}
+              <button
+                type="button"
+                onClick={() => {
+                  setCategoryError(null);
+                  setRenamingCategory(null);
+                  setConfirmDeleteCategory(null);
+                  setCategoryManagerOpen(true);
+                }}
+                className="px-1.5 py-0.5 rounded-md text-[10px] font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 cursor-pointer transition-colors"
+                title="Gestisci, rinomina o elimina categorie"
+              >
+                Gestisci
+              </button>
+            </div>
           </div>
+
+          {sidebarAddingCategory && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const created = handleAddCategory(newCategoryName);
+                if (created) {
+                  setNewCategoryName('');
+                  setSidebarAddingCategory(false);
+                }
+              }}
+              className="px-2.5 pb-2 space-y-1.5"
+            >
+              <div className="flex items-center gap-1">
+                <input
+                  type="text"
+                  autoFocus
+                  value={newCategoryName}
+                  onChange={(e) => {
+                    setNewCategoryName(e.target.value);
+                    if (categoryError) setCategoryError(null);
+                  }}
+                  placeholder="Nome categoria..."
+                  className="flex-1 min-w-0 px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded-md focus:bg-white focus:outline-none focus:border-slate-900"
+                />
+                <button
+                  type="submit"
+                  className="p-1 rounded-md bg-slate-900 text-white hover:bg-slate-800 cursor-pointer shrink-0"
+                  title="Salva categoria"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSidebarAddingCategory(false);
+                    setNewCategoryName('');
+                    setCategoryError(null);
+                  }}
+                  className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer shrink-0"
+                  title="Annulla"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              {categoryError && !categoryManagerOpen && (
+                <div className="text-[10px] text-rose-600 font-medium px-0.5">
+                  {categoryError}
+                </div>
+              )}
+            </form>
+          )}
+
           <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
             <button
               type="button"
@@ -1096,37 +1430,185 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                   : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
               }`}
             >
-              <span className="truncate">Tutte le categorie</span>
+              <span className="truncate">Tutti gli articoli</span>
               <span className="font-mono text-[11px] text-slate-400 tabular-nums">
                 {items.length}
               </span>
             </button>
-            {categories.map((cat) => {
-              const count = categoryCounts.get(cat) || 0;
-              const isSelected = categoryFilter === cat;
-              return (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => {
-                    setCategoryFilter(cat);
-                    if (activeTab !== 'catalog' && activeTab !== 'low_stock') {
-                      setActiveTab('catalog');
-                    }
-                  }}
-                  className={`w-full px-2.5 py-1.5 rounded-md text-xs flex items-center justify-between gap-2 cursor-pointer transition-colors ${
-                    isSelected
-                      ? 'bg-orange-50 text-orange-900 font-semibold'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  <span className="truncate">{cat}</span>
-                  <span className="font-mono text-[11px] text-slate-400 tabular-nums">
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
+
+            {categories.length === 0 ? (
+              <div className="px-2.5 py-3 text-[11px] text-slate-400 leading-relaxed">
+                Nessuna categoria creata. Clicca <span className="font-semibold text-slate-600">+</span> per definire le tue categorie.
+              </div>
+            ) : (
+              categories.map((cat) => {
+                const count = categoryCounts.get(cat) || 0;
+                const isSelected =
+                  categoryFilter !== 'all' &&
+                  categoryFilter !== UNCATEGORIZED_KEY &&
+                  categoryFilter.toLowerCase() === cat.toLowerCase();
+                const isRenaming = renamingCategory === cat && !categoryManagerOpen;
+                const isConfirmDel = confirmDeleteCategory === cat && !categoryManagerOpen;
+
+                if (isRenaming) {
+                  return (
+                    <form
+                      key={cat}
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        handleRenameCategory(cat, renameCategoryValue);
+                      }}
+                      className="px-1 py-1 space-y-1"
+                    >
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          autoFocus
+                          value={renameCategoryValue}
+                          onChange={(e) => {
+                            setRenameCategoryValue(e.target.value);
+                            if (categoryError) setCategoryError(null);
+                          }}
+                          className="flex-1 min-w-0 px-2 py-1 text-xs bg-white border border-slate-400 rounded-md focus:outline-none focus:border-slate-900"
+                        />
+                        <button
+                          type="submit"
+                          className="p-1 rounded-md bg-slate-900 text-white hover:bg-slate-800 cursor-pointer shrink-0"
+                          title="Salva nome"
+                        >
+                          <Check className="w-3 h-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRenamingCategory(null);
+                            setRenameCategoryValue('');
+                            setCategoryError(null);
+                          }}
+                          className="p-1 rounded-md text-slate-400 hover:text-slate-700 cursor-pointer shrink-0"
+                          title="Annulla"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                      {categoryError && (
+                        <div className="text-[10px] text-rose-600 font-medium px-1">
+                          {categoryError}
+                        </div>
+                      )}
+                    </form>
+                  );
+                }
+
+                if (isConfirmDel) {
+                  return (
+                    <div
+                      key={cat}
+                      className="px-2 py-1.5 rounded-md bg-rose-50 border border-rose-200 flex items-center justify-between gap-1.5 text-[11px]"
+                    >
+                      <span className="text-rose-800 font-medium truncate">
+                        Elimina "{cat}"?
+                      </span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCategory(cat)}
+                          className="px-1.5 py-0.5 rounded bg-rose-600 text-white font-semibold cursor-pointer"
+                        >
+                          Sì
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteCategory(null)}
+                          className="px-1.5 py-0.5 rounded bg-white text-slate-600 border border-slate-200 cursor-pointer"
+                        >
+                          No
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div
+                    key={cat}
+                    className={`group w-full px-2 py-1 rounded-md text-xs flex items-center justify-between gap-1 transition-colors ${
+                      isSelected
+                        ? 'bg-orange-50 text-orange-900 font-semibold'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCategoryFilter(cat);
+                        if (activeTab !== 'catalog' && activeTab !== 'low_stock') {
+                          setActiveTab('catalog');
+                        }
+                      }}
+                      className="flex-1 min-w-0 text-left py-0.5 px-0.5 truncate cursor-pointer"
+                      title={cat}
+                    >
+                      {cat}
+                    </button>
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmDeleteCategory(null);
+                          setRenamingCategory(cat);
+                          setRenameCategoryValue(cat);
+                          setCategoryError(null);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-slate-200/80 text-slate-400 hover:text-slate-800 cursor-pointer transition-opacity"
+                        title="Rinomina categoria"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRenamingCategory(null);
+                          setConfirmDeleteCategory(cat);
+                          setCategoryError(null);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-rose-100 text-slate-400 hover:text-rose-600 cursor-pointer transition-opacity"
+                        title="Elimina categoria"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                      <span className="font-mono text-[11px] text-slate-400 tabular-nums pl-0.5">
+                        {count}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+
+            {uncategorizedCount > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCategoryFilter(UNCATEGORIZED_KEY);
+                  if (activeTab !== 'catalog' && activeTab !== 'low_stock') {
+                    setActiveTab('catalog');
+                  }
+                }}
+                className={`w-full px-2.5 py-1.5 rounded-md text-xs flex items-center justify-between gap-2 cursor-pointer transition-colors ${
+                  categoryFilter === UNCATEGORIZED_KEY
+                    ? 'bg-orange-50 text-orange-900 font-semibold'
+                    : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900 italic'
+                }`}
+              >
+                <span className="truncate">Senza categoria</span>
+                <span className="font-mono text-[11px] text-slate-400 tabular-nums not-italic">
+                  {uncategorizedCount}
+                </span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -1169,7 +1651,7 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
               {sectionTitles[activeTab]}
             </h2>
             <p className="text-xs text-slate-500 font-mono tabular-nums mt-0.5 truncate">
-              {items.length} articoli · {totalUnitsInStock} unità totali ·{' '}
+              Magazzino generale sempre attivo · {items.length} articoli · {totalUnitsInStock} unità ·{' '}
               {lowStockItems.length} sotto scorta · {todayStats.total} movimenti oggi
             </p>
           </div>
@@ -1300,7 +1782,25 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                           {cat}
                         </option>
                       ))}
+                      {uncategorizedCount > 0 && (
+                        <option value={UNCATEGORIZED_KEY}>Senza categoria ({uncategorizedCount})</option>
+                      )}
                     </select>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCategoryError(null);
+                        setRenamingCategory(null);
+                        setConfirmDeleteCategory(null);
+                        setCategoryManagerOpen(true);
+                      }}
+                      className="px-2.5 py-2 text-xs font-semibold bg-white hover:bg-slate-50 border border-slate-300 rounded-lg text-slate-700 flex items-center gap-1.5 cursor-pointer transition-colors"
+                      title="Crea, modifica o elimina le tue categorie"
+                    >
+                      <Tag className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Categorie ({categories.length})</span>
+                    </button>
 
                     <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg">
                       <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -1486,8 +1986,14 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                                 </td>
 
                                 <td className="py-2.5 px-3 align-middle">
-                                  <div className="text-slate-800 font-medium truncate max-w-[180px]">
-                                    {item.category}
+                                  <div
+                                    className={`font-medium truncate max-w-[180px] ${
+                                      item.category?.trim()
+                                        ? 'text-slate-800'
+                                        : 'text-slate-400 italic'
+                                    }`}
+                                  >
+                                    {item.category?.trim() || 'Senza categoria'}
                                   </div>
                                   <div className="text-[11px] text-slate-500 truncate max-w-[180px]">
                                     {item.location || 'Magazzino'}
@@ -1675,7 +2181,7 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                                 {item.barcode ? ` · ${item.barcode}` : ''}
                               </div>
                               <div className="text-[11px] text-slate-500 truncate mt-0.5">
-                                {item.category} · {item.location || 'Magazzino'}
+                                {item.category?.trim() || 'Senza categoria'} · {item.location || 'Magazzino'}
                                 {attCount > 0 ? ` · ${attCount} file` : ''}
                               </div>
                             </div>
@@ -1904,14 +2410,14 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
 
                       <div className="sm:col-span-5">
                         <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                          Commessa associata
+                          Destinazione / MTR (opzionale)
                         </label>
                         <select
                           value={scanCommessaCode}
                           onChange={(e) => setScanCommessaCode(e.target.value)}
                           className="w-full px-2.5 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-md focus:outline-none focus:border-slate-900"
                         >
-                          <option value="">Magazzino generale</option>
+                          <option value="">Magazzino generale (nessun MTR)</option>
                           {loads.map((ld) => (
                             <option key={ld.id} value={ld.code}>
                               {ld.code} — {ld.title}
@@ -1922,9 +2428,185 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                     </div>
 
                     <p className="text-xs text-slate-500">
-                      Se il codice esiste già la giacenza si aggiorna subito; se è nuovo si apre la scheda per registrarlo una sola volta.
+                      Legge sia gli articoli del magazzino sia i barcode/QR dei <strong>Bancali e Scatole</strong> stampati con TiMini Print o Etichette A4 (in modalità Uscita scarica tutto il contenuto con data e ora).
                     </p>
                   </form>
+
+                  {/* Scheda Bancale / Scatola Commessa Riconosciuto dal Barcode */}
+                  {matchedCommessaRecord && matchedCommessaLoad && (
+                    <div className="bg-white border-2 border-emerald-600/40 rounded-xl overflow-hidden">
+                      <div className="px-4 py-3 bg-emerald-50/80 border-b border-emerald-200 flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="px-2 py-0.5 rounded bg-slate-900 text-white text-[10px] font-bold uppercase">
+                              {matchedCommessaRecord.type === 'pallet'
+                                ? 'BANCALE COMMESSA'
+                                : matchedCommessaRecord.type === 'box'
+                                ? 'SCATOLA COMMESSA'
+                                : 'OGGETTO COMMESSA'}
+                            </span>
+                            <span className="font-mono text-sm font-bold text-slate-900">
+                              {matchedCommessaRecord.code}
+                            </span>
+                            <span className="text-xs font-mono text-slate-500">
+                              ({matchedCommessaRecord.commessaCode})
+                            </span>
+                          </div>
+                          <div className="text-xs font-semibold text-slate-800 mt-0.5">
+                            {matchedCommessaRecord.name} · {matchedCommessaRecord.quantityText} ·{' '}
+                            {matchedCommessaRecord.weightKg.toFixed(1)} kg
+                          </div>
+                          <div className="text-[11px] font-mono mt-1">
+                            {matchedCommessaRecord.shippedAt ? (
+                              <span className="text-emerald-800 font-bold inline-flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                Scaricato il {formatItDateTime(matchedCommessaRecord.shippedAt, true)}
+                              </span>
+                            ) : (
+                              <span className="text-amber-700 font-semibold">
+                                Non ancora scaricato in uscita
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                          {onDispatchTrackingRecord &&
+                            (matchedCommessaRecord.shippedAt ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onDispatchTrackingRecord(matchedCommessaRecord, {
+                                    syncWarehouse: false,
+                                    undo: true,
+                                  })
+                                }
+                                className="px-2.5 py-1 rounded-md bg-white hover:bg-rose-50 border border-rose-200 text-rose-700 text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
+                              >
+                                <RotateCcw className="w-3 h-3" />
+                                <span>Annulla Uscita</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const res = onDispatchTrackingRecord(
+                                    matchedCommessaRecord,
+                                    { syncWarehouse: true, undo: false }
+                                  );
+                                  if (soundEnabled) playScannerBeep('out');
+                                  setLastScannedBanner({
+                                    kind: 'out',
+                                    title: `${matchedCommessaRecord.code} scaricato in uscita`,
+                                    detail: `${res.itemsCount} righe (${res.piecesCount} pz) · ${formatItDateTime(res.timestampIso, true)}`,
+                                  });
+                                }}
+                                className="px-2.5 py-1 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                              >
+                                <Truck className="w-3 h-3" />
+                                <span>Scarica Tutto Ora</span>
+                              </button>
+                            ))}
+
+                          <button
+                            type="button"
+                            onClick={() => setMatchedCommessaRef(null)}
+                            className="p-1 rounded hover:bg-emerald-100 text-slate-500 cursor-pointer"
+                            title="Chiudi anteprima collo"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Contenuto completo del bancale e delle scatole */}
+                      <div className="p-3 space-y-2 max-h-60 overflow-y-auto">
+                        {matchedCommessaGroups.length > 0 ? (
+                          matchedCommessaGroups.map((grp) => (
+                            <div
+                              key={grp.key}
+                              className="border border-slate-200 rounded-lg overflow-hidden"
+                            >
+                              <div className="px-2.5 py-1.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-[11px] font-bold text-slate-700">
+                                <span className="flex items-center gap-1.5">
+                                  <Box className="w-3 h-3 text-blue-700" />
+                                  {grp.title}
+                                </span>
+                                <span className="font-mono">
+                                  {grp.items.reduce((a, b) => a + b.quantity, 0)} pz
+                                </span>
+                              </div>
+                              <div className="divide-y divide-slate-100">
+                                {grp.items.map((it) => (
+                                  <div
+                                    key={it.itemId}
+                                    className="px-2.5 py-1.5 flex items-center justify-between gap-2 text-xs"
+                                  >
+                                    <div className="truncate">
+                                      <span className="font-mono font-bold text-slate-900 mr-1.5">
+                                        {it.sku}
+                                      </span>
+                                      <span className="text-slate-700">{it.name}</span>
+                                    </div>
+                                    <span className="font-mono font-bold text-slate-900 shrink-0">
+                                      {it.quantity} pz
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-xs text-slate-500 text-center py-3">
+                            Nessun articolo registrato dentro questo collo.
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Esportazione Distinta Merce in Uscita Excel & PDF */}
+                      <div className="px-3.5 py-2.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-[11px] font-semibold text-slate-600">
+                          Esporta Distinta Merce in Uscita ({matchedCommessaLoad.code}):
+                        </span>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              downloadOutboundManifestExcel(
+                                matchedCommessaLoad,
+                                movements,
+                                {
+                                  onlyShipped: true,
+                                  operatorName: currentUser.name,
+                                }
+                              )
+                            }
+                            className="px-2.5 py-1 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
+                          >
+                            <FileSpreadsheet className="w-3 h-3" />
+                            <span>Distinta Excel (.xlsx)</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              downloadOutboundManifestPdf(
+                                matchedCommessaLoad,
+                                movements,
+                                {
+                                  onlyShipped: true,
+                                  operatorName: currentUser.name,
+                                }
+                              )
+                            }
+                            className="px-2.5 py-1 rounded-md bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
+                          >
+                            <FileText className="w-3 h-3" />
+                            <span>Distinta PDF</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Conferma ultima operazione */}
                   {lastScannedBanner && (
@@ -2281,7 +2963,7 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                           <th className="py-2.5 px-3">Tipo</th>
                           <th className="py-2.5 px-3">Articolo / SKU</th>
                           <th className="py-2.5 px-3 text-right">Quantità</th>
-                          <th className="py-2.5 px-3">Commessa</th>
+                          <th className="py-2.5 px-3">Destinazione / MTR</th>
                           <th className="py-2.5 px-4">Causale e Operatore</th>
                         </tr>
                       </thead>
@@ -2318,7 +3000,7 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                               </div>
                             </td>
                             <td className="py-2.5 px-3 font-mono text-slate-700">
-                              {m.commessaCode || '—'}
+                              {m.commessaCode || 'Magazzino'}
                             </td>
                             <td className="py-2.5 px-4 text-slate-600">
                               <div>{m.reason}</div>
@@ -2399,8 +3081,14 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                       <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                       <span className="truncate">{selectedItem.location || 'Magazzino'}</span>
                     </div>
-                    <div className="text-[11px] text-slate-500 truncate mt-1">
-                      {selectedItem.category}
+                    <div
+                      className={`text-[11px] truncate mt-1 ${
+                        selectedItem.category?.trim()
+                          ? 'text-slate-500'
+                          : 'text-slate-400 italic'
+                      }`}
+                    >
+                      {selectedItem.category?.trim() || 'Senza categoria'}
                     </div>
                   </div>
                 </div>
@@ -2685,21 +3373,74 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Categoria
-                  </label>
-                  <input
-                    type="text"
-                    list="warehouse-cat-list"
-                    value={formCategory}
-                    onChange={(e) => setFormCategory(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-slate-900"
-                  />
-                  <datalist id="warehouse-cat-list">
-                    {categories.map((c) => (
-                      <option key={c} value={c} />
-                    ))}
-                  </datalist>
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <label className="font-semibold text-slate-700">Categoria</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditorAddingCategory((v) => !v);
+                        setEditorNewCategoryName('');
+                      }}
+                      className="text-[11px] font-semibold text-orange-600 hover:underline cursor-pointer"
+                    >
+                      {editorAddingCategory ? 'Scegli elenco' : '+ Nuova'}
+                    </button>
+                  </div>
+                  {editorAddingCategory ? (
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={editorNewCategoryName}
+                        onChange={(e) => setEditorNewCategoryName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const created = handleAddCategory(editorNewCategoryName);
+                            if (created) {
+                              setFormCategory(created);
+                              setEditorNewCategoryName('');
+                              setEditorAddingCategory(false);
+                            }
+                          }
+                        }}
+                        placeholder="Nome categoria..."
+                        className="flex-1 min-w-0 px-2.5 py-2 bg-white border border-slate-400 rounded-lg focus:outline-none focus:border-slate-900"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const created = handleAddCategory(editorNewCategoryName);
+                          if (created) {
+                            setFormCategory(created);
+                            setEditorNewCategoryName('');
+                            setEditorAddingCategory(false);
+                          }
+                        }}
+                        className="p-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 cursor-pointer shrink-0"
+                        title="Crea e seleziona categoria"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <select
+                      value={formCategory}
+                      onChange={(e) => setFormCategory(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-slate-900"
+                    >
+                      <option value="">Senza categoria</option>
+                      {categories.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                      {formCategory &&
+                        !categories.some(
+                          (c) => c.toLowerCase() === formCategory.toLowerCase()
+                        ) && <option value={formCategory}>{formCategory}</option>}
+                    </select>
+                  )}
                 </div>
               </div>
 
@@ -2860,6 +3601,225 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          MODAL: GESTIONE CATEGORIE PERSONALIZZATE (CREA / RINOMINA / ELIMINA)
+      ===================================================================== */}
+      {categoryManagerOpen && (
+        <div className="fixed inset-0 z-[90] bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <Tag className="w-4 h-4 text-orange-400 shrink-0" />
+                <div className="min-w-0">
+                  <h3 className="text-sm font-bold truncate">Gestisci le tue Categorie</h3>
+                  <p className="text-[11px] text-slate-300 truncate">
+                    Crea, rinomina o elimina le categorie del tuo magazzino
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setCategoryManagerOpen(false);
+                  setRenamingCategory(null);
+                  setConfirmDeleteCategory(null);
+                  setCategoryError(null);
+                }}
+                className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 cursor-pointer shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 flex-1 overflow-y-auto space-y-4 text-xs">
+              {/* Form aggiunta nuova categoria */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const created = handleAddCategory(newCategoryName);
+                  if (created) {
+                    setNewCategoryName('');
+                  }
+                }}
+                className="flex items-center gap-2"
+              >
+                <input
+                  type="text"
+                  value={newCategoryName}
+                  onChange={(e) => {
+                    setNewCategoryName(e.target.value);
+                    if (categoryError) setCategoryError(null);
+                  }}
+                  placeholder="Nuova categoria (es. Scaffale A, Materiale elettrico...)"
+                  className="flex-1 min-w-0 px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-slate-900"
+                />
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold flex items-center gap-1.5 cursor-pointer shrink-0"
+                >
+                  <Plus className="w-3.5 h-3.5 text-orange-400" />
+                  <span>Aggiungi</span>
+                </button>
+              </form>
+
+              {categoryError && (
+                <div className="px-3 py-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 font-medium">
+                  {categoryError}
+                </div>
+              )}
+
+              {/* Elenco categorie dell'utente */}
+              {categories.length === 0 ? (
+                <div className="py-10 px-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-center space-y-1.5">
+                  <Tag className="w-7 h-7 text-slate-300 mx-auto" />
+                  <div className="font-semibold text-slate-700">
+                    Nessuna categoria configurata
+                  </div>
+                  <p className="text-[11px] text-slate-500 max-w-xs mx-auto">
+                    Scrivi qui sopra il nome della tua prima categoria e clicca Aggiungi per organizzare il tuo magazzino come preferisci.
+                  </p>
+                </div>
+              ) : (
+                <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden">
+                  {categories.map((cat) => {
+                    const count = categoryCounts.get(cat) || 0;
+                    const isRenaming = renamingCategory === cat;
+                    const isConfirmDel = confirmDeleteCategory === cat;
+
+                    return (
+                      <div
+                        key={cat}
+                        className="px-3.5 py-2.5 bg-white flex items-center justify-between gap-2"
+                      >
+                        {isRenaming ? (
+                          <form
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              handleRenameCategory(cat, renameCategoryValue);
+                            }}
+                            className="flex-1 flex items-center gap-1.5"
+                          >
+                            <input
+                              type="text"
+                              autoFocus
+                              value={renameCategoryValue}
+                              onChange={(e) => {
+                                setRenameCategoryValue(e.target.value);
+                                if (categoryError) setCategoryError(null);
+                              }}
+                              className="flex-1 min-w-0 px-2.5 py-1.5 bg-slate-50 border border-slate-400 rounded-lg focus:bg-white focus:outline-none focus:border-slate-900"
+                            />
+                            <button
+                              type="submit"
+                              className="px-2.5 py-1.5 rounded-lg bg-slate-900 text-white font-semibold cursor-pointer"
+                            >
+                              Salva
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRenamingCategory(null);
+                                setRenameCategoryValue('');
+                                setCategoryError(null);
+                              }}
+                              className="px-2 py-1.5 rounded-lg bg-slate-100 text-slate-600 cursor-pointer"
+                            >
+                              Annulla
+                            </button>
+                          </form>
+                        ) : isConfirmDel ? (
+                          <div className="flex-1 flex items-center justify-between gap-2">
+                            <span className="text-rose-700 font-medium">
+                              Eliminare "{cat}"?{' '}
+                              {count > 0
+                                ? `(${count} articoli passeranno a "Senza categoria")`
+                                : ''}
+                            </span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteCategory(cat)}
+                                className="px-2.5 py-1 rounded-md bg-rose-600 text-white font-semibold cursor-pointer"
+                              >
+                                Elimina
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteCategory(null)}
+                                className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 cursor-pointer"
+                              >
+                                Annulla
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="min-w-0 flex-1">
+                              <div className="font-semibold text-slate-900 truncate">
+                                {cat}
+                              </div>
+                              <div className="text-[11px] text-slate-500 font-mono tabular-nums">
+                                {count} {count === 1 ? 'articolo' : 'articoli'}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setConfirmDeleteCategory(null);
+                                  setRenamingCategory(cat);
+                                  setRenameCategoryValue(cat);
+                                  setCategoryError(null);
+                                }}
+                                className="px-2.5 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-medium flex items-center gap-1 cursor-pointer transition-colors"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                                <span>Rinomina</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRenamingCategory(null);
+                                  setConfirmDeleteCategory(cat);
+                                  setCategoryError(null);
+                                }}
+                                className="px-2.5 py-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 font-medium flex items-center gap-1 cursor-pointer transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Elimina</span>
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <p className="text-[11px] text-slate-500">
+                Le categorie sono personali e sempre salvate nel tuo Magazzino Aziendale. Se elimini una categoria, gli articoli rimangono al sicuro in magazzino come "Senza categoria".
+              </p>
+            </div>
+
+            <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex justify-end shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setCategoryManagerOpen(false);
+                  setRenamingCategory(null);
+                  setConfirmDeleteCategory(null);
+                  setCategoryError(null);
+                }}
+                className="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer"
+              >
+                Chiudi
+              </button>
+            </div>
           </div>
         </div>
       )}
