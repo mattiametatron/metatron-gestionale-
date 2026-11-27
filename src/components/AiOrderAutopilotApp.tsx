@@ -44,6 +44,7 @@ import {
   generateNextQuoteNumber,
 } from '../utils/aiOrderAutopilot';
 import { generateQuotePdf } from '../utils/businessPdfGenerator';
+import { authFetch } from '../utils/authSession';
 import {
   translateTextsForPrint,
   usePrintLanguage,
@@ -285,7 +286,7 @@ export const AiOrderAutopilotApp: React.FC<AiOrderAutopilotAppProps> = ({
           paymentTerms: c.paymentTerms || '',
         }));
 
-      const res = await fetch('/api/ai/parse-client-request', {
+      const res = await authFetch('/api/ai/parse-client-request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

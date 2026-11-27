@@ -5621,7 +5621,7 @@ var require_read = __commonJS({
     var iconv = require_lib();
     var onFinished = require_on_finished();
     var unpipe = require_unpipe();
-    var zlib4 = require("zlib");
+    var zlib5 = require("zlib");
     module2.exports = read;
     function read(req, res, next, parse2, debug, options) {
       var length;
@@ -5717,12 +5717,12 @@ var require_read = __commonJS({
       }
       switch (encoding) {
         case "deflate":
-          stream2 = zlib4.createInflate();
+          stream2 = zlib5.createInflate();
           debug("inflate body");
           req.pipe(stream2);
           break;
         case "gzip":
-          stream2 = zlib4.createGunzip();
+          stream2 = zlib5.createGunzip();
           debug("gunzip body");
           req.pipe(stream2);
           break;
@@ -24686,7 +24686,7 @@ var require_limiter = __commonJS({
 var require_permessage_deflate = __commonJS({
   "node_modules/ws/lib/permessage-deflate.js"(exports2, module2) {
     "use strict";
-    var zlib4 = require("zlib");
+    var zlib5 = require("zlib");
     var bufferUtil = require_buffer_util();
     var Limiter = require_limiter();
     var { kStatusCode } = require_constants();
@@ -24953,8 +24953,8 @@ var require_permessage_deflate = __commonJS({
         const endpoint = this._isServer ? "client" : "server";
         if (!this._inflate) {
           const key = `${endpoint}_max_window_bits`;
-          const windowBits = typeof this.params[key] !== "number" ? zlib4.Z_DEFAULT_WINDOWBITS : this.params[key];
-          this._inflate = zlib4.createInflateRaw({
+          const windowBits = typeof this.params[key] !== "number" ? zlib5.Z_DEFAULT_WINDOWBITS : this.params[key];
+          this._inflate = zlib5.createInflateRaw({
             ...this._options.zlibInflateOptions,
             windowBits
           });
@@ -25004,8 +25004,8 @@ var require_permessage_deflate = __commonJS({
         const endpoint = this._isServer ? "server" : "client";
         if (!this._deflate) {
           const key = `${endpoint}_max_window_bits`;
-          const windowBits = typeof this.params[key] !== "number" ? zlib4.Z_DEFAULT_WINDOWBITS : this.params[key];
-          this._deflate = zlib4.createDeflateRaw({
+          const windowBits = typeof this.params[key] !== "number" ? zlib5.Z_DEFAULT_WINDOWBITS : this.params[key];
+          this._deflate = zlib5.createDeflateRaw({
             ...this._options.zlibDeflateOptions,
             windowBits
           });
@@ -25015,7 +25015,7 @@ var require_permessage_deflate = __commonJS({
         }
         this._deflate[kCallback] = callback;
         this._deflate.write(data);
-        this._deflate.flush(zlib4.Z_SYNC_FLUSH, () => {
+        this._deflate.flush(zlib5.Z_SYNC_FLUSH, () => {
           if (!this._deflate) {
             return;
           }
@@ -163436,11 +163436,11 @@ async function fetch2(url, options_) {
         return;
       }
       const zlibOptions = {
-        flush: import_node_zlib.default.Z_SYNC_FLUSH,
-        finishFlush: import_node_zlib.default.Z_SYNC_FLUSH
+        flush: import_node_zlib2.default.Z_SYNC_FLUSH,
+        finishFlush: import_node_zlib2.default.Z_SYNC_FLUSH
       };
       if (codings === "gzip" || codings === "x-gzip") {
-        body = (0, import_node_stream2.pipeline)(body, import_node_zlib.default.createGunzip(zlibOptions), (error) => {
+        body = (0, import_node_stream2.pipeline)(body, import_node_zlib2.default.createGunzip(zlibOptions), (error) => {
           if (error) {
             reject(error);
           }
@@ -163457,13 +163457,13 @@ async function fetch2(url, options_) {
         });
         raw.once("data", (chunk) => {
           if ((chunk[0] & 15) === 8) {
-            body = (0, import_node_stream2.pipeline)(body, import_node_zlib.default.createInflate(), (error) => {
+            body = (0, import_node_stream2.pipeline)(body, import_node_zlib2.default.createInflate(), (error) => {
               if (error) {
                 reject(error);
               }
             });
           } else {
-            body = (0, import_node_stream2.pipeline)(body, import_node_zlib.default.createInflateRaw(), (error) => {
+            body = (0, import_node_stream2.pipeline)(body, import_node_zlib2.default.createInflateRaw(), (error) => {
               if (error) {
                 reject(error);
               }
@@ -163481,7 +163481,7 @@ async function fetch2(url, options_) {
         return;
       }
       if (codings === "br") {
-        body = (0, import_node_stream2.pipeline)(body, import_node_zlib.default.createBrotliDecompress(), (error) => {
+        body = (0, import_node_stream2.pipeline)(body, import_node_zlib2.default.createBrotliDecompress(), (error) => {
           if (error) {
             reject(error);
           }
@@ -163528,12 +163528,12 @@ function fixResponseChunkedTransferBadEnding(request, errorCallback) {
     });
   });
 }
-var import_node_http2, import_node_https, import_node_zlib, import_node_stream2, import_node_buffer2, supportedSchemas;
+var import_node_http2, import_node_https, import_node_zlib2, import_node_stream2, import_node_buffer2, supportedSchemas;
 var init_src = __esm({
   "node_modules/gaxios/node_modules/node-fetch/src/index.js"() {
     import_node_http2 = __toESM(require("node:http"), 1);
     import_node_https = __toESM(require("node:https"), 1);
-    import_node_zlib = __toESM(require("node:zlib"), 1);
+    import_node_zlib2 = __toESM(require("node:zlib"), 1);
     import_node_stream2 = __toESM(require("node:stream"), 1);
     import_node_buffer2 = require("node:buffer");
     init_dist();
@@ -224157,6 +224157,1407 @@ function zipSync(data, opts) {
   return out;
 }
 
+// serverLocalEngine.ts
+var import_node_zlib = __toESM(require("node:zlib"), 1);
+var translationCache = /* @__PURE__ */ new Map();
+var MAX_CACHE_SIZE = 4e3;
+function setCache(key, val) {
+  if (translationCache.size >= MAX_CACHE_SIZE) {
+    const firstKey = translationCache.keys().next().value;
+    if (firstKey !== void 0) translationCache.delete(firstKey);
+  }
+  translationCache.set(key, val);
+}
+function extractTextFromPdfBase64(base64Data) {
+  if (!base64Data) return "";
+  try {
+    const buf = Buffer.from(base64Data, "base64");
+    const rawLatin1 = buf.toString("latin1");
+    const chunks = [];
+    const extractFromTextStream = (content) => {
+      const tjRegex = /\(([^()\\]*(?:\\.[^()\\]*)*)\)\s*(?:Tj|'|")/g;
+      let m2;
+      while ((m2 = tjRegex.exec(content)) !== null) {
+        const cleaned = decodePdfEscapes(m2[1]).trim();
+        if (cleaned && /[a-zA-Z0-9À-ÿ]/.test(cleaned)) {
+          chunks.push(cleaned);
+        }
+      }
+      const arrRegex = /\[([\s\S]*?)\]\s*TJ/g;
+      while ((m2 = arrRegex.exec(content)) !== null) {
+        const inner = m2[1];
+        const parts = [];
+        const pReg = /\(([^()\\]*(?:\\.[^()\\]*)*)\)/g;
+        let pm;
+        while ((pm = pReg.exec(inner)) !== null) {
+          parts.push(decodePdfEscapes(pm[1]));
+        }
+        const joined = parts.join("").trim();
+        if (joined && /[a-zA-Z0-9À-ÿ]/.test(joined)) {
+          chunks.push(joined);
+        }
+      }
+    };
+    extractFromTextStream(rawLatin1);
+    if (chunks.join(" ").length < 80) {
+      const streamRegex = /stream\r?\n/g;
+      let sm;
+      while ((sm = streamRegex.exec(rawLatin1)) !== null) {
+        const start = sm.index + sm[0].length;
+        const end = rawLatin1.indexOf("endstream", start);
+        if (end <= start || end - start > 4 * 1024 * 1024) continue;
+        const slice = buf.subarray(start, end);
+        let trimmed = slice;
+        while (trimmed.length > 0 && (trimmed[trimmed.length - 1] === 10 || trimmed[trimmed.length - 1] === 13)) {
+          trimmed = trimmed.subarray(0, trimmed.length - 1);
+        }
+        if (trimmed.length < 4) continue;
+        let inflated = null;
+        try {
+          inflated = import_node_zlib.default.inflateSync(trimmed);
+        } catch {
+          try {
+            inflated = import_node_zlib.default.inflateRawSync(trimmed);
+          } catch {
+            inflated = null;
+          }
+        }
+        if (inflated) {
+          const text = inflated.toString("latin1");
+          extractFromTextStream(text);
+        }
+      }
+    }
+    return chunks.join("\n").replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  } catch {
+    return "";
+  }
+}
+function decodePdfEscapes(str) {
+  return str.replace(/\\n/g, "\n").replace(/\\r/g, "").replace(/\\t/g, " ").replace(/\\([()\\])/g, "$1").replace(/\\([0-7]{3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)));
+}
+var OFFLINE_TECH_DICT = [
+  {
+    it: /\bquadro elettrico\b/gi,
+    tx: {
+      en: "Electrical Panel",
+      de: "Schaltschrank",
+      fr: "Armoire \xC9lectrique",
+      es: "Cuadro El\xE9ctrico",
+      pt: "Quadro El\xE9trico",
+      nl: "Schakelkast",
+      pl: "Szafa Elektryczna",
+      ro: "Tablou Electric"
+    }
+  },
+  {
+    it: /\bquadri elettrici\b/gi,
+    tx: {
+      en: "Electrical Panels",
+      de: "Schaltschr\xE4nke",
+      fr: "Armoires \xC9lectriques",
+      es: "Cuadros El\xE9ctricos",
+      pt: "Quadros El\xE9tricos",
+      nl: "Schakelkasten",
+      pl: "Szafy Elektryczne",
+      ro: "Tablouri Electrice"
+    }
+  },
+  {
+    it: /\bpannelli coibentati\b/gi,
+    tx: {
+      en: "Insulated Panels",
+      de: "Isolierpaneele",
+      fr: "Panneaux Isolants",
+      es: "Paneles Aislantes",
+      pt: "Pain\xE9is Isolantes",
+      nl: "Ge\xEFsoleerde Panelen",
+      pl: "Panele Izolowane",
+      ro: "Panouri Izolate"
+    }
+  },
+  {
+    it: /\bpannello\b/gi,
+    tx: {
+      en: "Panel",
+      de: "Paneel",
+      fr: "Panneau",
+      es: "Panel",
+      pt: "Painel",
+      nl: "Paneel",
+      pl: "Panel",
+      ro: "Panou"
+    }
+  },
+  {
+    it: /\bpannelli\b/gi,
+    tx: {
+      en: "Panels",
+      de: "Paneele",
+      fr: "Panneaux",
+      es: "Paneles",
+      pt: "Pain\xE9is",
+      nl: "Panelen",
+      pl: "Panele",
+      ro: "Panouri"
+    }
+  },
+  {
+    it: /\bverniciatura a polvere\b/gi,
+    tx: {
+      en: "Powder Coating",
+      de: "Pulverbeschichtung",
+      fr: "Thermolaquage",
+      es: "Pintura en Polvo",
+      pt: "Pintura a P\xF3",
+      nl: "Poedercoating",
+      pl: "Malowanie Proszkowe",
+      ro: "Vopsire \xEEn C\xE2mp Electrostatic"
+    }
+  },
+  {
+    it: /\bverniciatura\b/gi,
+    tx: {
+      en: "Painting / Coating",
+      de: "Lackierung",
+      fr: "Peinture",
+      es: "Pintura",
+      pt: "Pintura",
+      nl: "Lakwerk",
+      pl: "Malowanie",
+      ro: "Vopsire"
+    }
+  },
+  {
+    it: /\bzincatura a caldo\b/gi,
+    tx: {
+      en: "Hot-Dip Galvanizing",
+      de: "Feuerverzinkung",
+      fr: "Galvanisation \xE0 Chaud",
+      es: "Galvanizado en Caliente",
+      pt: "Galvaniza\xE7\xE3o a Quente",
+      nl: "Thermisch Verzinken",
+      pl: "Cynkowanie Ogniowe",
+      ro: "Zincare Termic\u0103"
+    }
+  },
+  {
+    it: /\bzincatura\b/gi,
+    tx: {
+      en: "Galvanizing",
+      de: "Verzinkung",
+      fr: "Galvanisation",
+      es: "Galvanizado",
+      pt: "Galvaniza\xE7\xE3o",
+      nl: "Verzinken",
+      pl: "Cynkowanie",
+      ro: "Zincare"
+    }
+  },
+  {
+    it: /\bzincato\b/gi,
+    tx: {
+      en: "Galvanized",
+      de: "Verzinkt",
+      fr: "Galvanis\xE9",
+      es: "Galvanizado",
+      pt: "Galvanizado",
+      nl: "Verzinkt",
+      pl: "Ocynkowany",
+      ro: "Zincat"
+    }
+  },
+  {
+    it: /\bzincati\b/gi,
+    tx: {
+      en: "Galvanized",
+      de: "Verzinkt",
+      fr: "Galvanis\xE9s",
+      es: "Galvanizados",
+      pt: "Galvanizados",
+      nl: "Verzinkt",
+      pl: "Ocynkowane",
+      ro: "Zinca\u021Bi"
+    }
+  },
+  {
+    it: /\bacciaio inox\b/gi,
+    tx: {
+      en: "Stainless Steel",
+      de: "Edelstahl",
+      fr: "Acier Inoxydable",
+      es: "Acero Inoxidable",
+      pt: "A\xE7o Inoxid\xE1vel",
+      nl: "Roestvrij Staal",
+      pl: "Stal Nierdzewna",
+      ro: "O\u021Bel Inoxidabil"
+    }
+  },
+  {
+    it: /\bacciaio\b/gi,
+    tx: {
+      en: "Steel",
+      de: "Stahl",
+      fr: "Acier",
+      es: "Acero",
+      pt: "A\xE7o",
+      nl: "Staal",
+      pl: "Stal",
+      ro: "O\u021Bel"
+    }
+  },
+  {
+    it: /\balluminio\b/gi,
+    tx: {
+      en: "Aluminum",
+      de: "Aluminium",
+      fr: "Aluminium",
+      es: "Aluminio",
+      pt: "Alum\xEDnio",
+      nl: "Aluminium",
+      pl: "Aluminium",
+      ro: "Aluminiu"
+    }
+  },
+  {
+    it: /\bstaffe\b/gi,
+    tx: {
+      en: "Brackets",
+      de: "Halterungen",
+      fr: "Supports",
+      es: "Soportes",
+      pt: "Suportes",
+      nl: "Beugels",
+      pl: "Uchwyty",
+      ro: "Console / Suporturi"
+    }
+  },
+  {
+    it: /\bstaffa\b/gi,
+    tx: {
+      en: "Bracket",
+      de: "Halterung",
+      fr: "Support",
+      es: "Soporte",
+      pt: "Suporte",
+      nl: "Beugel",
+      pl: "Uchwyt",
+      ro: "Suport"
+    }
+  },
+  {
+    it: /\bprofili\b/gi,
+    tx: {
+      en: "Profiles",
+      de: "Profile",
+      fr: "Profil\xE9s",
+      es: "Perfiles",
+      pt: "Perfis",
+      nl: "Profielen",
+      pl: "Profile",
+      ro: "Profile"
+    }
+  },
+  {
+    it: /\bprofilo\b/gi,
+    tx: {
+      en: "Profile",
+      de: "Profil",
+      fr: "Profil\xE9",
+      es: "Perfil",
+      pt: "Perfil",
+      nl: "Profiel",
+      pl: "Profil",
+      ro: "Profil"
+    }
+  },
+  {
+    it: /\bviti\b/gi,
+    tx: {
+      en: "Screws",
+      de: "Schrauben",
+      fr: "Vis",
+      es: "Tornillos",
+      pt: "Parafusos",
+      nl: "Schroeven",
+      pl: "\u015Aruby",
+      ro: "\u0218uruburi"
+    }
+  },
+  {
+    it: /\bbulloni\b/gi,
+    tx: {
+      en: "Bolts",
+      de: "Bolzen / Schrauben",
+      fr: "Boulons",
+      es: "Pernos",
+      pt: "Parafusos",
+      nl: "Bouten",
+      pl: "\u015Aruby",
+      ro: "Bulon / \u0218uruburi"
+    }
+  },
+  {
+    it: /\bguarnizioni\b/gi,
+    tx: {
+      en: "Gaskets / Seals",
+      de: "Dichtungen",
+      fr: "Joints",
+      es: "Juntas",
+      pt: "Juntas / Veda\xE7\xF5es",
+      nl: "Afdichtingen",
+      pl: "Uszczelki",
+      ro: "Garnituri"
+    }
+  },
+  {
+    it: /\bcerniere\b/gi,
+    tx: {
+      en: "Hinges",
+      de: "Scharniere",
+      fr: "Charni\xE8res",
+      es: "Bisagras",
+      pt: "Dobradi\xE7as",
+      nl: "Scharnieren",
+      pl: "Zawiasy",
+      ro: "Balamale"
+    }
+  },
+  {
+    it: /\bmotoriduttori\b/gi,
+    tx: {
+      en: "Gearmotors",
+      de: "Getriebemotoren",
+      fr: "Motor\xE9ducteurs",
+      es: "Motorreductores",
+      pt: "Motoredutores",
+      nl: "Motorreductoren",
+      pl: "Motoreduktory",
+      ro: "Motoreductoare"
+    }
+  },
+  {
+    it: /\bmotore\b/gi,
+    tx: {
+      en: "Motor",
+      de: "Motor",
+      fr: "Moteur",
+      es: "Motor",
+      pt: "Motor",
+      nl: "Motor",
+      pl: "Silnik",
+      ro: "Motor"
+    }
+  },
+  {
+    it: /\bcavi\b/gi,
+    tx: {
+      en: "Cables",
+      de: "Kabel",
+      fr: "C\xE2bles",
+      es: "Cables",
+      pt: "Cabos",
+      nl: "Kabels",
+      pl: "Kable",
+      ro: "Cabluri"
+    }
+  },
+  {
+    it: /\bcavo\b/gi,
+    tx: {
+      en: "Cable",
+      de: "Kabel",
+      fr: "C\xE2ble",
+      es: "Cable",
+      pt: "Cabo",
+      nl: "Kabel",
+      pl: "Kabel",
+      ro: "Cablu"
+    }
+  },
+  {
+    it: /\bfotocellule\b/gi,
+    tx: {
+      en: "Safety Photocells",
+      de: "Lichtschranken",
+      fr: "Photocellules",
+      es: "Fotoc\xE9lulas",
+      pt: "Fotoc\xE9lulas",
+      nl: "Fotocellen",
+      pl: "Fotokom\xF3rki",
+      ro: "Fotocelule"
+    }
+  },
+  {
+    it: /\bsensori\b/gi,
+    tx: {
+      en: "Sensors",
+      de: "Sensoren",
+      fr: "Capteurs",
+      es: "Sensores",
+      pt: "Sensores",
+      nl: "Sensoren",
+      pl: "Czujniki",
+      ro: "Senzori"
+    }
+  },
+  {
+    it: /\bricambi\b/gi,
+    tx: {
+      en: "Spare Parts",
+      de: "Ersatzteile",
+      fr: "Pi\xE8ces de Rechange",
+      es: "Repuestos",
+      pt: "Pe\xE7as de Reposi\xE7\xE3o",
+      nl: "Reserveonderdelen",
+      pl: "Cz\u0119\u015Bci Zamienne",
+      ro: "Piese de Schimb"
+    }
+  },
+  {
+    it: /\bbancali\b/gi,
+    tx: {
+      en: "Pallets",
+      de: "Paletten",
+      fr: "Palettes",
+      es: "Palets",
+      pt: "Paletes",
+      nl: "Pallets",
+      pl: "Palety",
+      ro: "Pale\u021Bi"
+    }
+  },
+  {
+    it: /\bbancale\b/gi,
+    tx: {
+      en: "Pallet",
+      de: "Palette",
+      fr: "Palette",
+      es: "Palet",
+      pt: "Palete",
+      nl: "Pallet",
+      pl: "Paleta",
+      ro: "Palet"
+    }
+  },
+  {
+    it: /\bscatole\b/gi,
+    tx: {
+      en: "Boxes",
+      de: "Kartons",
+      fr: "Cartons",
+      es: "Cajas",
+      pt: "Caixas",
+      nl: "Dozen",
+      pl: "Kartony",
+      ro: "Cutii"
+    }
+  },
+  {
+    it: /\bscatola\b/gi,
+    tx: {
+      en: "Box",
+      de: "Karton",
+      fr: "Carton",
+      es: "Caja",
+      pt: "Caixa",
+      nl: "Doos",
+      pl: "Karton",
+      ro: "Cutie"
+    }
+  },
+  {
+    it: /\bfragile\b/gi,
+    tx: {
+      en: "Fragile",
+      de: "Zerbrechlich",
+      fr: "Fragile",
+      es: "Fr\xE1gil",
+      pt: "Fr\xE1gil",
+      nl: "Breekbaar",
+      pl: "Ostro\u017Cnie / Kruche",
+      ro: "Fragil"
+    }
+  },
+  {
+    it: /\bfasciato\b/gi,
+    tx: {
+      en: "Stretch Wrapped",
+      de: "Foliert",
+      fr: "Film\xE9",
+      es: "Enfilmado",
+      pt: "Enfaixado",
+      nl: "Gewikkeld",
+      pl: "Owini\u0119ty Foli\u0105",
+      ro: "\xCEnfoliat"
+    }
+  },
+  {
+    it: /\bsigillato\b/gi,
+    tx: {
+      en: "Sealed",
+      de: "Versiegelt",
+      fr: "Scell\xE9",
+      es: "Precintado",
+      pt: "Selado",
+      nl: "Verzegeld",
+      pl: "Zaplombowany",
+      ro: "Sigilat"
+    }
+  },
+  {
+    it: /\bfornitura\b/gi,
+    tx: {
+      en: "Supply",
+      de: "Lieferung",
+      fr: "Fourniture",
+      es: "Suministro",
+      pt: "Fornecimento",
+      nl: "Levering",
+      pl: "Dostawa",
+      ro: "Furnizare"
+    }
+  },
+  {
+    it: /\bspedizione\b/gi,
+    tx: {
+      en: "Shipment",
+      de: "Sendung",
+      fr: "Exp\xE9dition",
+      es: "Env\xEDo",
+      pt: "Expedi\xE7\xE3o",
+      nl: "Zending",
+      pl: "Wysy\u0142ka",
+      ro: "Expediere"
+    }
+  },
+  {
+    it: /\bvendita\b/gi,
+    tx: {
+      en: "Sale",
+      de: "Verkauf",
+      fr: "Vente",
+      es: "Venta",
+      pt: "Venda",
+      nl: "Verkoop",
+      pl: "Sprzeda\u017C",
+      ro: "V\xE2nzare"
+    }
+  },
+  {
+    it: /\bconto lavorazione\b/gi,
+    tx: {
+      en: "Subcontract Processing",
+      de: "Lohnbearbeitung",
+      fr: "Travail \xE0 Fa\xE7on",
+      es: "Maquila / Subcontrataci\xF3n",
+      pt: "Subcontrata\xE7\xE3o",
+      nl: "Loonwerk",
+      pl: "Obr\xF3bka Us\u0142ugowa",
+      ro: "Prelucrare \xEEn Lohn"
+    }
+  },
+  {
+    it: /\bbonifico\b/gi,
+    tx: {
+      en: "Bank Transfer",
+      de: "\xDCberweisung",
+      fr: "Virement Bancaire",
+      es: "Transferencia Bancaria",
+      pt: "Transfer\xEAncia Banc\xE1ria",
+      nl: "Bankoverschrijving",
+      pl: "Przelew Bankowy",
+      ro: "Transfer Bancar"
+    }
+  },
+  {
+    it: /\bfranco\b/gi,
+    tx: {
+      en: "Prepaid / Free",
+      de: "Frei Haus",
+      fr: "Franco",
+      es: "Portes Pagados",
+      pt: "Franco",
+      nl: "Franco",
+      pl: "Op\u0142acony",
+      ro: "Franco"
+    }
+  },
+  {
+    it: /\bassegnato\b/gi,
+    tx: {
+      en: "Freight Collect",
+      de: "Unfrei",
+      fr: "Port D\xFB",
+      es: "Portes Debidos",
+      pt: "Frete a Pagar",
+      nl: "Ongefrankeerd",
+      pl: "Na Koszt Odbiorcy",
+      ro: "Plat\u0103 la Destina\u021Bie"
+    }
+  },
+  {
+    it: /\bpronto\b/gi,
+    tx: {
+      en: "In Stock",
+      de: "Auf Lager",
+      fr: "En Stock",
+      es: "En Stock",
+      pt: "Em Stock",
+      nl: "Op Voorraad",
+      pl: "Dost\u0119pny",
+      ro: "\xCEn Stoc"
+    }
+  },
+  {
+    it: /\bmateriale\b/gi,
+    tx: {
+      en: "Material",
+      de: "Material",
+      fr: "Mat\xE9riel",
+      es: "Material",
+      pt: "Material",
+      nl: "Materiaal",
+      pl: "Materia\u0142",
+      ro: "Material"
+    }
+  },
+  {
+    it: /\bopaco\b/gi,
+    tx: {
+      en: "Matte",
+      de: "Matt",
+      fr: "Mat",
+      es: "Mate",
+      pt: "Fosco",
+      nl: "Mat",
+      pl: "Matowy",
+      ro: "Mat"
+    }
+  },
+  {
+    it: /\blucido\b/gi,
+    tx: {
+      en: "Glossy",
+      de: "Gl\xE4nzend",
+      fr: "Brillant",
+      es: "Brillante",
+      pt: "Brilhante",
+      nl: "Glanzend",
+      pl: "Po\u0142ysk",
+      ro: "Lucios"
+    }
+  },
+  {
+    it: /\bbucciato\b/gi,
+    tx: {
+      en: "Textured",
+      de: "Strukturiert",
+      fr: "Textur\xE9",
+      es: "Texturizado",
+      pt: "Texturizado",
+      nl: "Structuur",
+      pl: "Strukturalny",
+      ro: "Texturat"
+    }
+  }
+];
+function translateTextOfflineDict(text, targetLang) {
+  if (!text || targetLang === "it") return text;
+  let out = text;
+  for (const entry of OFFLINE_TECH_DICT) {
+    const rep = entry.tx[targetLang];
+    if (!rep) continue;
+    out = out.replace(entry.it, (match2) => {
+      if (match2 === match2.toUpperCase() && match2 !== match2.toLowerCase()) {
+        return rep.toUpperCase();
+      }
+      return rep;
+    });
+  }
+  return out;
+}
+function protectTechnicalTokens(text) {
+  const tokens = [];
+  const pattern2 = /\b(?:RAL\s*\d{4}|(?:SKU|PLT|BOX|ART|COMM|DDT|ODA|PRV|QR|MT)[A-Z0-9\-_]{1,}|IP\d{2}|M\d{1,2}|\d+(?:[.,]\d+)?\s*(?:x|×)\s*\d+(?:[.,]\d+)?(?:\s*(?:x|×)\s*\d+(?:[.,]\d+)?)?\s*(?:mm|cm|m)?|\d+\/\d+\s*V)\b/gi;
+  const masked = text.replace(pattern2, (match2) => {
+    const idx = tokens.length;
+    tokens.push(match2);
+    return `ZZTOK${idx}ZZ`;
+  });
+  return { masked, tokens };
+}
+function restoreTechnicalTokens(text, tokens) {
+  return text.replace(/ZZTOK(\d+)ZZ/gi, (_, idxStr) => {
+    const idx = Number(idxStr);
+    return tokens[idx] !== void 0 ? tokens[idx] : "";
+  });
+}
+async function translateChunkViaPublicEndpoint(chunkTexts, targetLang) {
+  const DELIM = " |||MTSEP||| ";
+  const maskedItems = chunkTexts.map((t2) => protectTechnicalTokens(t2));
+  const joined = maskedItems.map((m2) => m2.masked).join(DELIM);
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(
+      targetLang
+    )}&dt=t&q=${encodeURIComponent(joined)}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 7e3);
+    const res = await fetch(url, {
+      method: "GET",
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0"
+      }
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const json2 = await res.json();
+    if (!Array.isArray(json2) || !Array.isArray(json2[0])) return null;
+    const fullTranslated = json2[0].map((seg) => Array.isArray(seg) && typeof seg[0] === "string" ? seg[0] : "").join("");
+    const parts = fullTranslated.split(/\s*\|\|\|\s*MTSEP\s*\|\|\|\s*/i);
+    if (parts.length !== chunkTexts.length) {
+      return null;
+    }
+    return parts.map(
+      (p, idx) => restoreTechnicalTokens(p.trim(), maskedItems[idx].tokens)
+    );
+  } catch {
+    return null;
+  }
+}
+async function translateSingleViaPublicEndpoint(text, targetLang) {
+  const { masked, tokens } = protectTechnicalTokens(text);
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(
+      targetLang
+    )}&dt=t&q=${encodeURIComponent(masked)}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6e3);
+    const res = await fetch(url, {
+      method: "GET",
+      signal: controller.signal,
+      headers: { "User-Agent": "Mozilla/5.0" }
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const json2 = await res.json();
+    if (!Array.isArray(json2) || !Array.isArray(json2[0])) return null;
+    const translated = json2[0].map((seg) => Array.isArray(seg) && typeof seg[0] === "string" ? seg[0] : "").join("").trim();
+    return translated ? restoreTechnicalTokens(translated, tokens) : null;
+  } catch {
+    return null;
+  }
+}
+async function translateTextsZeroApiKey(texts, targetLang) {
+  if (!texts.length || targetLang === "it") {
+    return { translations: texts, engine: "offline-dict" };
+  }
+  const results = [...texts];
+  const pendingUnique = [];
+  const pendingMap = /* @__PURE__ */ new Map();
+  texts.forEach((raw, idx) => {
+    const trimmed = String(raw ?? "").trim();
+    if (!trimmed || /^[0-9.,:/\-+×xX%€$£\s#]+$/.test(trimmed)) {
+      return;
+    }
+    const cacheKey = `${targetLang}::${trimmed}`;
+    const cached = translationCache.get(cacheKey);
+    if (cached) {
+      results[idx] = cached;
+      return;
+    }
+    const existing = pendingMap.get(trimmed);
+    if (existing) {
+      existing.push(idx);
+    } else {
+      pendingMap.set(trimmed, [idx]);
+      pendingUnique.push(trimmed);
+    }
+  });
+  if (pendingUnique.length === 0) {
+    return { translations: results, engine: "keyless-online" };
+  }
+  const batches = [];
+  let currentBatch = [];
+  let currentChars = 0;
+  for (const item of pendingUnique) {
+    if (currentBatch.length >= 20 || currentChars + item.length > 1300) {
+      if (currentBatch.length > 0) batches.push(currentBatch);
+      currentBatch = [item];
+      currentChars = item.length;
+    } else {
+      currentBatch.push(item);
+      currentChars += item.length + 14;
+    }
+  }
+  if (currentBatch.length > 0) batches.push(currentBatch);
+  let usedOnline = false;
+  for (const batch of batches) {
+    let translatedBatch = await translateChunkViaPublicEndpoint(batch, targetLang);
+    if (!translatedBatch && batch.length <= 8) {
+      const singles = await Promise.all(
+        batch.map((t2) => translateSingleViaPublicEndpoint(t2, targetLang))
+      );
+      if (singles.some(Boolean)) {
+        translatedBatch = singles.map((s2, i2) => s2 || translateTextOfflineDict(batch[i2], targetLang));
+      }
+    }
+    if (translatedBatch) {
+      usedOnline = true;
+      batch.forEach((orig, bIdx) => {
+        const tx = translatedBatch[bIdx] || orig;
+        setCache(`${targetLang}::${orig}`, tx);
+        const indices = pendingMap.get(orig) || [];
+        indices.forEach((i2) => {
+          results[i2] = tx;
+        });
+      });
+    } else {
+      batch.forEach((orig) => {
+        const tx = translateTextOfflineDict(orig, targetLang);
+        const indices = pendingMap.get(orig) || [];
+        indices.forEach((i2) => {
+          results[i2] = tx;
+        });
+      });
+    }
+  }
+  return {
+    translations: results,
+    engine: usedOnline ? "keyless-online" : "offline-dict"
+  };
+}
+function normalizeStr(s2) {
+  return s2.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+var IT_STOPWORDS = /* @__PURE__ */ new Set([
+  "di",
+  "da",
+  "in",
+  "con",
+  "su",
+  "per",
+  "tra",
+  "fra",
+  "il",
+  "lo",
+  "la",
+  "i",
+  "gli",
+  "le",
+  "un",
+  "uno",
+  "una",
+  "del",
+  "della",
+  "dei",
+  "degli",
+  "delle",
+  "al",
+  "alla",
+  "ai",
+  "alle",
+  "che",
+  "mi",
+  "ci",
+  "si",
+  "e",
+  "ed",
+  "o",
+  "a",
+  "n",
+  "nr",
+  "pz",
+  "pezzi",
+  "scatole",
+  "scatola",
+  "ml",
+  "mt",
+  "metri"
+]);
+function stemToken(tok) {
+  if (tok.length <= 3) return tok;
+  return tok.replace(/(oni|ini|etti|ati|ate|iti|ite|elli|elle|i|e|a|o)$/, "");
+}
+function tokenizeSemantic(s2) {
+  return normalizeStr(s2).split(" ").filter((w) => w.length >= 2 && !IT_STOPWORDS.has(w)).map(stemToken);
+}
+function matchCatalogItem(mention, catalog) {
+  if (!catalog.length) {
+    return { item: null, confidence: "nuovo_articolo", reason: "Articolo non presente in catalogo" };
+  }
+  const normMention = normalizeStr(mention);
+  const mentionTokens = new Set(tokenizeSemantic(mention));
+  let bestItem = null;
+  let bestScore = 0;
+  for (const c of catalog) {
+    const normSku = normalizeStr(c.sku);
+    if (normSku && normSku.length >= 3 && normMention.includes(normSku)) {
+      return {
+        item: c,
+        confidence: "alta",
+        reason: `Corrispondenza esatta codice SKU (${c.sku})`
+      };
+    }
+    const catTokens = tokenizeSemantic(`${c.name} ${c.category} ${c.sku}`);
+    if (catTokens.length === 0 || mentionTokens.size === 0) continue;
+    let hits = 0;
+    for (const ct of catTokens) {
+      if (mentionTokens.has(ct)) {
+        hits += 1;
+      } else {
+        for (const mt of mentionTokens) {
+          if (mt.length >= 4 && ct.length >= 4 && (ct.startsWith(mt) || mt.startsWith(ct))) {
+            hits += 0.75;
+            break;
+          }
+        }
+      }
+    }
+    const denom = Math.min(mentionTokens.size, catTokens.length) + 0.5;
+    const score = hits / denom;
+    if (score > bestScore) {
+      bestScore = score;
+      bestItem = c;
+    }
+  }
+  if (bestItem && bestScore >= 0.55) {
+    return {
+      item: bestItem,
+      confidence: "alta",
+      reason: `Abbinamento automatico catalogo (${bestItem.sku})`
+    };
+  }
+  if (bestItem && bestScore >= 0.34) {
+    return {
+      item: bestItem,
+      confidence: "media",
+      reason: `Possibile corrispondenza catalogo (${bestItem.sku})`
+    };
+  }
+  return {
+    item: null,
+    confidence: "nuovo_articolo",
+    reason: "Nuovo articolo rilevato dalla richiesta"
+  };
+}
+function estimateIndustrialProfile(name, unit) {
+  const low = name.toLowerCase();
+  const isBoxUnit = /scatol|cf|confez|carton/.test(unit.toLowerCase()) || /\bscatol/.test(low);
+  if (/\b(quadr[oi]|centralin|inverter|plc|scheda elettron|alimentator|ups)\b/.test(low)) {
+    return {
+      category: "Materiale Elettrico",
+      weightKg: 14,
+      costEur: 220,
+      fragile: true,
+      skuPrefix: "EL"
+    };
+  }
+  if (/\b(motor|motoriduttor|pomp|elettropomp|ventilator|compressor)\b/.test(low)) {
+    return {
+      category: "Elettromeccanica",
+      weightKg: 24,
+      costEur: 340,
+      fragile: true,
+      skuPrefix: "MOT"
+    };
+  }
+  if (/\b(telecamer|sensor|fotocellul|laser|ottic|vetr|display|monitor|specchi)\b/.test(low)) {
+    return {
+      category: "Automazione & Sensori",
+      weightKg: 1.5,
+      costEur: 85,
+      fragile: true,
+      skuPrefix: "SNS"
+    };
+  }
+  if (/\b(pannell|lamier|coibentat|grigliat|porton|lastra|lastre)\b/.test(low)) {
+    return {
+      category: "Pannelli & Lamiere",
+      weightKg: 16,
+      costEur: 58,
+      fragile: false,
+      skuPrefix: "PAN"
+    };
+  }
+  if (/\b(profil|trav[ei]|tub[oi]|barra|barre|putrell|montant|corrimano|acciaio|ferro)\b/.test(low)) {
+    return {
+      category: "Carpenteria & Profili",
+      weightKg: 8.5,
+      costEur: 26,
+      fragile: false,
+      skuPrefix: "PRF"
+    };
+  }
+  if (/\b(viti|vite|bullon|dad[oi]|rondell|tassell|rivett|viteria|minuteria)\b/.test(low)) {
+    return {
+      category: "Viteria & Fissaggio",
+      weightKg: isBoxUnit ? 1.8 : 0.08,
+      costEur: isBoxUnit ? 16 : 0.65,
+      fragile: false,
+      skuPrefix: "VIT"
+    };
+  }
+  if (/\b(staff[ae]|angolar|cernier|piastr|support|mensol|ganci|collari)\b/.test(low)) {
+    return {
+      category: "Ferramenta & Staffe",
+      weightKg: 1.4,
+      costEur: 9.5,
+      fragile: false,
+      skuPrefix: "STF"
+    };
+  }
+  if (/\b(guarnizion|gomma|epdm|paracolp|silicone|nastro|tubo fless|isolant)\b/.test(low)) {
+    return {
+      category: "Guarnizioni & Tenute",
+      weightKg: 0.35,
+      costEur: 4.2,
+      fragile: false,
+      skuPrefix: "GRN"
+    };
+  }
+  if (/\b(cav[oi]|fil[oi]|guain|morsett|connettor|spin|pres[ae])\b/.test(low)) {
+    return {
+      category: "Cavi & Cablaggio",
+      weightKg: 0.9,
+      costEur: 12,
+      fragile: false,
+      skuPrefix: "CAV"
+    };
+  }
+  return {
+    category: "Materiale Generale",
+    weightKg: 2.2,
+    costEur: 18,
+    fragile: /fragil|delicat|vetr/.test(low),
+    skuPrefix: "MAT"
+  };
+}
+function nextWeekdayIso(targetDay, fromDate) {
+  const d = new Date(fromDate);
+  const diff = (targetDay - d.getDay() + 7) % 7 || 7;
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+function extractDeliveryDateAndUrgency(text) {
+  const now = /* @__PURE__ */ new Date();
+  const low = text.toLowerCase();
+  let urgency = "normale";
+  if (/\b(critica|emergenza|fermo impianto|oggi stesso|subito|immediata)\b/.test(low)) {
+    urgency = "critica";
+  } else if (/\b(urgent|urgente|urgenti|urgenza|domani|entro\s+[123]\s+giorn|al pi[uù] presto)\b/.test(low)) {
+    urgency = "urgente";
+  }
+  const explicitDate = text.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](20\d{2})\b/);
+  if (explicitDate) {
+    const dd = explicitDate[1].padStart(2, "0");
+    const mm = explicitDate[2].padStart(2, "0");
+    const yyyy = explicitDate[3];
+    return { dateIso: `${yyyy}-${mm}-${dd}`, urgency };
+  }
+  const withinDays = low.match(/\b(?:entro|tra|fra)\s+(\d{1,2})\s+giorn/);
+  if (withinDays) {
+    const days = Math.max(1, Math.min(60, Number(withinDays[1])));
+    const d = new Date(now.getTime() + days * 864e5);
+    return { dateIso: d.toISOString().slice(0, 10), urgency };
+  }
+  if (/\bdomani\b/.test(low)) {
+    return {
+      dateIso: new Date(now.getTime() + 1 * 864e5).toISOString().slice(0, 10),
+      urgency: urgency === "normale" ? "urgente" : urgency
+    };
+  }
+  if (/\bdopodomani\b/.test(low)) {
+    return {
+      dateIso: new Date(now.getTime() + 2 * 864e5).toISOString().slice(0, 10),
+      urgency: urgency === "normale" ? "urgente" : urgency
+    };
+  }
+  const weekdays = [
+    [/\bluned[iì]\b/, 1],
+    [/\bmarted[iì]\b/, 2],
+    [/\bmercoled[iì]\b/, 3],
+    [/\bgioved[iì]\b/, 4],
+    [/\bvenerd[iì]\b/, 5],
+    [/\bsabato\b/, 6]
+  ];
+  for (const [re, dayNum] of weekdays) {
+    if (re.test(low)) {
+      return { dateIso: nextWeekdayIso(dayNum, now), urgency };
+    }
+  }
+  return {
+    dateIso: new Date(now.getTime() + 4 * 864e5).toISOString().slice(0, 10),
+    urgency
+  };
+}
+function extractClientAndContact(text, contacts) {
+  const normText = normalizeStr(text);
+  let bestContact = null;
+  let bestLen = 0;
+  for (const c of contacts) {
+    const nc = normalizeStr(c.companyName);
+    if (nc.length >= 4 && normText.includes(nc) && nc.length > bestLen) {
+      bestContact = c;
+      bestLen = nc.length;
+    }
+  }
+  if (bestContact) {
+    return { clientName: bestContact.companyName, matchedContact: bestContact };
+  }
+  const patterns = [
+    /(?:per conto di|da parte di|azienda|cliente|spett\.?le)\s*[:\-]?\s*([A-ZÀ-Ý][A-Za-zÀ-ÿ0-9&.\-\s]{2,50}?)(?=\s+(?:chiediamo|richiediamo|consegna|via|per|che|ci\b)|[.,;\n]|$)/i,
+    /(?:sono\s+[A-ZÀ-Ý][a-zà-ÿ]+\s+di)\s+([A-ZÀ-Ý][A-Za-zÀ-ÿ0-9&.\-\s]{2,45}?)(?=[.,!?\n]|$)/i,
+    /(?:ufficio\s+acquisti|amministrazione|direzione)\s*[—\-–:]\s*([A-ZÀ-Ý][A-Za-zÀ-ÿ0-9&.\-\s]{2,50}?)(?=[.,\n]|$)/i,
+    /\b([A-ZÀ-Ý][A-Za-zÀ-ÿ0-9&\-\s]{2,40}\s+(?:S\.?r\.?l\.?|S\.?p\.?A\.?|S\.?n\.?c\.?|S\.?a\.?s\.?|GmbH|Ltd))\b/
+  ];
+  for (const re of patterns) {
+    const m2 = text.match(re);
+    if (m2 && m2[1]) {
+      const candidate = m2[1].trim().replace(/[.,;:!]+$/, "");
+      if (candidate.length >= 3) {
+        return { clientName: candidate, matchedContact: null };
+      }
+    }
+  }
+  return { clientName: "Nuovo Cliente", matchedContact: null };
+}
+function extractDestination(text, matchedContact) {
+  const patterns = [
+    /(?:in\s+cantiere\s+a|cantiere\s+di|cantiere\s+a|presso\s+il\s+nostro\s+stabilimento\s+di|presso\s+lo\s+stabilimento\s+di|presso\s+stabilimento\s+di|consegna\s+(?:a|presso|in)|destinazione\s*[:\-])\s*([^\n.;:!?]{3,90})/i,
+    /\b((?:Via|Viale|Corso|Piazza|Strada|Loc\.|Localit[àa]|Zona\s+Industriale)\s+[^\n.;!?]{4,75})/i
+  ];
+  for (const re of patterns) {
+    const m2 = text.match(re);
+    if (m2 && m2[1]) {
+      return m2[1].trim().replace(/^[,\-:\s]+|[.,;:\s]+$/g, "");
+    }
+  }
+  if (matchedContact) {
+    return matchedContact.shippingAddress || matchedContact.city || "Da confermare";
+  }
+  return "Da confermare";
+}
+function extractPaymentTerms(text, matchedContact) {
+  const m2 = text.match(
+    /\b((?:Bonifico|Ri\.?Ba\.?|Rimessa\s+Diretta|Contrassegno|Anticipato|Vista\s+fattura)[^\n.;]{0,35})/i
+  );
+  if (m2 && m2[1]) {
+    return m2[1].trim().replace(/[.,;]+$/, "");
+  }
+  return matchedContact?.paymentTerms || "Bonifico 30 gg d.f.";
+}
+function extractProjectTitle(text, clientName) {
+  const subj = text.match(/(?:oggetto|rif\.?|riferimento|commessa|progetto)\s*[:\-]\s*([^\n]{4,90})/i);
+  if (subj && subj[1]) {
+    return subj[1].trim().replace(/^(?:richiesta\s+(?:quotazione|preventivo)\s*(?:e\s+disponibilit[àa])?\s*[—\-–:]?\s*)/i, "").trim() || subj[1].trim();
+  }
+  return clientName && clientName !== "Nuovo Cliente" ? `Fornitura ${clientName}` : "Fornitura Materiale Industriale";
+}
+function parseQuantityUnitAndDesc(rawLine) {
+  let line = rawLine.trim();
+  if (!line || line.length < 3) return null;
+  const hadListMarker = /^(?:[-*•–—]|\d{1,2}\s*[).\-:])\s*/.test(line);
+  line = line.replace(/^(?:[-*•–—]|\d{1,2}\s*[).\-:])\s*/, "").trim();
+  if (/^(?:ciao|buongiorno|buonasera|salve|gentile|spett|oggetto|cordiali|grazie|fammi sapere|condizioni|in attesa|ufficio acquisti|ci servirebbero|per conto di)/i.test(
+    line
+  ) && !hadListMarker) {
+    return null;
+  }
+  const parenNotes = [];
+  let fragileHint = /fragil|delicat|vetr|non sovrapporre/i.test(line);
+  line = line.replace(/\(([^)]{2,80})\)/g, (_, inner) => {
+    parenNotes.push(inner.trim());
+    if (/fragil|delicat|vetr/i.test(inner)) fragileHint = true;
+    return " ";
+  }).replace(/\s{2,}/g, " ").trim();
+  let quantity = 0;
+  let unit = "pz";
+  let rest = line;
+  const qtyPatterns = [
+    {
+      re: /^(?:n\.?|nr\.?|q\.?t[àa]\.?|qty)?\s*(\d+(?:[.,]\d+)?)\s*(?:x\b)?\s*(pz|pezzi|ml|mt|m\b|mq|m2|kg|scatole|scatola|cf|confezioni|rotoli|rotolo|barre|barra|kit|set|bancali|bancale|paia)?\s*(?:di\s+)?(.+)$/i,
+      extract: (m2) => ({
+        qty: Math.max(1, Math.round(Number(m2[1].replace(",", ".")))),
+        u: m2[2],
+        desc: m2[3]
+      })
+    },
+    {
+      re: /^(.+?)\s*(?:x|\*|q\.?t[àa]\.?|n\.?)\s*(\d+(?:[.,]\d+)?)\s*(pz|pezzi|ml|mt|m|mq|kg|scatole|cf|kit)?$/i,
+      extract: (m2) => ({
+        qty: Math.max(1, Math.round(Number(m2[2].replace(",", ".")))),
+        u: m2[3],
+        desc: m2[1]
+      })
+    },
+    {
+      re: /^(?:una\s+decina|un\s+paio|mezza\s+dozzina|una\s+dozzina)\s+(?:di\s+)?(.+)$/i,
+      extract: (m2) => {
+        const prefix = m2[0].toLowerCase();
+        const qty = prefix.startsWith("una decina") ? 10 : prefix.startsWith("una dozzina") ? 12 : prefix.startsWith("mezza dozzina") ? 6 : 2;
+        return { qty, desc: m2[1] };
+      }
+    }
+  ];
+  for (const qp of qtyPatterns) {
+    const m2 = rest.match(qp.re);
+    if (m2) {
+      const parsed = qp.extract(m2);
+      if (parsed.qty > 0 && parsed.desc.trim().length >= 2) {
+        quantity = parsed.qty;
+        if (parsed.u) {
+          const ul = parsed.u.toLowerCase();
+          if (ul === "pezzi" || ul === "pz") unit = "pz";
+          else if (ul === "scatole" || ul === "scatola") unit = "cf";
+          else if (ul === "confezioni" || ul === "cf") unit = "cf";
+          else if (ul === "mt" || ul === "m") unit = "m";
+          else if (ul === "ml") unit = "ml";
+          else if (ul === "mq" || ul === "m2") unit = "mq";
+          else if (ul === "kg") unit = "kg";
+          else if (ul.startsWith("rotol")) unit = "rot";
+          else if (ul.startsWith("barr")) unit = "pz";
+          else if (ul.startsWith("bancal")) unit = "plt";
+          else unit = ul;
+        }
+        rest = parsed.desc.trim();
+        break;
+      }
+    }
+  }
+  if (quantity === 0) {
+    if (!hadListMarker) return null;
+    quantity = 1;
+  }
+  const cleanName = rest.replace(/^[-–—:.\s]+/, "").replace(/[;,.]+$/, "").trim();
+  if (cleanName.length < 2) return null;
+  const dimMatches = [];
+  const d1 = cleanName.match(/\b\d+(?:[.,]\d+)?\s*[x×]\s*\d+(?:[.,]\d+)?(?:\s*[x×]\s*\d+(?:[.,]\d+)?)?\s*(?:mm|cm|m)?\b/i);
+  if (d1) dimMatches.push(d1[0]);
+  const d2 = cleanName.match(/\b(?:da\s+)?\d+(?:[.,]\d+)?\s*(?:metri|mt|mm|cm)\b/i);
+  if (d2 && (!d1 || !d1[0].includes(d2[0]))) dimMatches.push(d2[0]);
+  const formattedName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
+  return {
+    quantity,
+    unit,
+    name: formattedName,
+    dimensionsCm: dimMatches.join(" \xB7 "),
+    notes: parenNotes.join("; "),
+    fragileHint
+  };
+}
+function parseClientRequestZeroApiKey(params) {
+  let combinedText = (params.rawText || "").trim();
+  if (params.fileBase64 && params.fileMimeType === "application/pdf") {
+    const pdfText = extractTextFromPdfBase64(params.fileBase64);
+    if (pdfText) {
+      combinedText = combinedText ? `${combinedText}
+
+${pdfText}` : pdfText;
+    }
+  } else if (params.fileBase64 && params.fileMimeType === "text/plain") {
+    try {
+      const txt = Buffer.from(params.fileBase64, "base64").toString("utf-8").trim();
+      if (txt) combinedText = combinedText ? `${combinedText}
+
+${txt}` : txt;
+    } catch {
+    }
+  }
+  const { clientName, matchedContact } = extractClientAndContact(
+    combinedText,
+    params.contactsSummary
+  );
+  const destination = extractDestination(combinedText, matchedContact);
+  const { dateIso, urgency } = extractDeliveryDateAndUrgency(combinedText);
+  const paymentTerms = extractPaymentTerms(combinedText, matchedContact);
+  const projectTitle = extractProjectTitle(combinedText, clientName);
+  const lines = combinedText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const extractedItems = [];
+  for (const line of lines) {
+    const parsed = parseQuantityUnitAndDesc(line);
+    if (!parsed) continue;
+    const match2 = matchCatalogItem(parsed.name, params.catalogSummary);
+    const est = estimateIndustrialProfile(
+      match2.item?.name || parsed.name,
+      match2.item?.unit || parsed.unit
+    );
+    const seq = String(extractedItems.length + 1).padStart(3, "0");
+    extractedItems.push({
+      rawMention: line,
+      matchedInventoryId: match2.item?.id || "",
+      sku: match2.item?.sku || `${est.skuPrefix}-${seq}`,
+      name: match2.item?.name || parsed.name,
+      category: match2.item?.category || est.category,
+      unit: match2.item?.unit || parsed.unit,
+      quantity: parsed.quantity,
+      estimatedUnitWeightKg: est.weightKg,
+      estimatedUnitCostEur: est.costEur,
+      fragile: parsed.fragileHint || est.fragile,
+      dimensionsCm: parsed.dimensionsCm,
+      matchConfidence: match2.confidence,
+      matchReason: match2.reason,
+      supplierName: match2.item?.supplier || "",
+      notes: parsed.notes
+    });
+  }
+  if (extractedItems.length === 0 && combinedText.length > 0) {
+    const segments = combinedText.split(/[;,]+/).map((s2) => s2.trim());
+    for (const seg of segments) {
+      const parsed = parseQuantityUnitAndDesc(seg);
+      if (!parsed) continue;
+      const match2 = matchCatalogItem(parsed.name, params.catalogSummary);
+      const est = estimateIndustrialProfile(
+        match2.item?.name || parsed.name,
+        match2.item?.unit || parsed.unit
+      );
+      const seq = String(extractedItems.length + 1).padStart(3, "0");
+      extractedItems.push({
+        rawMention: seg,
+        matchedInventoryId: match2.item?.id || "",
+        sku: match2.item?.sku || `${est.skuPrefix}-${seq}`,
+        name: match2.item?.name || parsed.name,
+        category: match2.item?.category || est.category,
+        unit: match2.item?.unit || parsed.unit,
+        quantity: parsed.quantity,
+        estimatedUnitWeightKg: est.weightKg,
+        estimatedUnitCostEur: est.costEur,
+        fragile: parsed.fragileHint || est.fragile,
+        dimensionsCm: parsed.dimensionsCm,
+        matchConfidence: match2.confidence,
+        matchReason: match2.reason,
+        supplierName: match2.item?.supplier || "",
+        notes: parsed.notes
+      });
+    }
+  }
+  const year = (/* @__PURE__ */ new Date()).getFullYear();
+  const clientCode = normalizeStr(clientName).replace(/\s+/g, "").slice(0, 4).toUpperCase();
+  const suggestedCommessaCode = `COMM-${year}-${clientCode || "NEW"}`;
+  const summaryNotes = extractedItems.length > 0 ? `Analisi locale completata: ${extractedItems.length} righe materiale estratte. Verifica pesi unitari e prezzi prima dell'invio definitivo.` : params.fileBase64 && params.fileMimeType?.startsWith("image/") ? "Immagine allegata: in modalit\xE0 senza API esterna inserisci o incolla il testo della richiesta oppure aggiungi le righe manualmente qui a destra." : "Richiesta acquisita: aggiungi o rifinisci gli articoli nella tabella preventivo.";
+  const customerReplyMessage = `Buongiorno ${clientName},
+
+abbiamo ricevuto la vostra richiesta per "${projectTitle}" con consegna prevista presso ${destination} entro il ${dateIso}.
+Abbiamo gi\xE0 preparato il preventivo dettagliato con verifica disponibilit\xE0 di magazzino e piano di carico.
+Restiamo a disposizione per conferma ordine.
+
+Cordiali saluti`;
+  return {
+    clientName,
+    matchedContactId: matchedContact?.id || "",
+    destination,
+    requestedDeliveryDate: dateIso,
+    urgency,
+    projectTitle,
+    suggestedCommessaCode,
+    paymentTerms,
+    summaryNotes,
+    customerReplyMessage,
+    items: extractedItems
+  };
+}
+
 // server.ts
 if (typeof globalThis.__dirname !== "undefined") {
   delete globalThis.__dirname;
@@ -228276,187 +229677,193 @@ async function startServer() {
         base64Data,
         mimeType = "application/pdf",
         fileName = "document.pdf"
-      } = req.body;
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        return res.status(500).json({
-          error: "GEMINI_API_KEY non configurata sul server."
-        });
-      }
-      const { GoogleGenAI: GoogleGenAI3 } = await Promise.resolve().then(() => (init_node(), node_exports));
-      const ai = new GoogleGenAI3({
-        apiKey,
-        httpOptions: {
-          headers: {
-            "User-Agent": "aistudio-build"
-          }
-        }
-      });
+      } = req.body || {};
       const languageNames = {
         it: "Italiano",
         en: "Inglese (English)",
         de: "Tedesco (Deutsch)",
         fr: "Francese (Fran\xE7ais)",
         es: "Spagnolo (Espa\xF1ol)",
+        pt: "Portoghese (Portugu\xEAs)",
+        nl: "Olandese (Nederlands)",
         pl: "Polacco (Polski)",
         ro: "Rumeno (Rom\xE2n\u0103)",
-        pt: "Portoghese (Portugu\xEAs)",
         zh: "Cinese (\u4E2D\u6587)",
         ar: "Arabo (\u0627\u0644\u0639\u0631\u0628\u064A\u0629)"
       };
       const langLabel = languageNames[targetLanguage] || targetLanguage;
-      const prompt = `Sei un traduttore professionista esperto di documenti di trasporto, logistica industriale, bolle di carico, DDT, packing list e schede tecniche internazionali.
+      if (!text && !base64Data) {
+        return res.status(400).json({ error: "Nessun testo o documento PDF fornito." });
+      }
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (apiKey) {
+        try {
+          const { GoogleGenAI: GoogleGenAI3, ThinkingLevel: ThinkingLevel2 } = await Promise.resolve().then(() => (init_node(), node_exports));
+          const ai = new GoogleGenAI3({
+            apiKey,
+            httpOptions: {
+              headers: { "User-Agent": "aistudio-build" }
+            }
+          });
+          const prompt = `Sei un traduttore professionista esperto di documenti di trasporto, logistica industriale, bolle di carico, DDT, packing list e schede tecniche internazionali.
 Traduci accuratamente in ${langLabel} il seguente documento o testo PDF di logistica.
 Mantieni intatti e fedeli i formati di dati: codici articolo, SKU, misure (cm, mm, m), pesi (kg, t), quantitativi, codici doganali (HS code) e nomi propri.
 Formatta la risposta in markdown ben strutturato con titoli, tabelle e sezioni corrispondenti al documento originale.`;
-      const parts = [];
-      if (base64Data) {
-        parts.push({
-          inlineData: {
-            mimeType,
-            data: base64Data
-          }
-        });
-        parts.push({
-          text: `${prompt}
+          const parts = [];
+          if (base64Data) {
+            parts.push({ inlineData: { mimeType, data: base64Data } });
+            parts.push({
+              text: `${prompt}
 
-Traduci l'intero contenuto di questo documento allegato (${fileName}) in ${langLabel}. Riassumi anche in una breve sezione iniziale: Mittente, Destinatario, Peso totale, Numero colli/bancali (se identificabili).`
-        });
-      } else if (text) {
-        parts.push({
-          text: `${prompt}
+Traduci l'intero contenuto di questo documento allegato (${fileName}) in ${langLabel}.`
+            });
+          } else {
+            parts.push({ text: `${prompt}
 
 Testo da tradurre:
-${text}`
-        });
-      } else {
-        return res.status(400).json({ error: "Nessun testo o documento PDF fornito." });
+${text}` });
+          }
+          const response = await ai.models.generateContent({
+            model: "gemini-4-hydrogen",
+            contents: { parts },
+            config: { thinkingConfig: { thinkingLevel: ThinkingLevel2.LOW } }
+          });
+          if (response.text) {
+            return res.json({
+              success: true,
+              translatedContent: response.text,
+              targetLanguage: langLabel,
+              engine: "gemini"
+            });
+          }
+        } catch (aiErr) {
+          console.warn("Translate PDF AI fallback to zero-API engine:", aiErr);
+        }
       }
-      let response;
-      try {
-        response = await ai.models.generateContent({
-          model: "gemini-3.1-flash-lite",
-          contents: { parts }
-        });
-      } catch {
-        response = await ai.models.generateContent({
-          model: "gemini-flash-latest",
-          contents: { parts }
+      let sourceText = typeof text === "string" ? text.trim() : "";
+      if (!sourceText && base64Data) {
+        if (mimeType === "text/plain") {
+          sourceText = Buffer.from(base64Data, "base64").toString("utf-8").trim();
+        } else {
+          sourceText = extractTextFromPdfBase64(base64Data);
+        }
+      }
+      if (!sourceText) {
+        return res.status(400).json({
+          error: "Il file allegato \xE8 una scansione immagine senza testo estraibile. Incolla il testo nel riquadro per tradurlo subito senza API."
         });
       }
+      const rawLines = sourceText.split(/\r?\n/);
+      const { translations, engine } = await translateTextsZeroApiKey(
+        rawLines.slice(0, 250),
+        String(targetLanguage)
+      );
+      const header = `# ${fileName} \u2014 ${langLabel}
+
+`;
       return res.json({
         success: true,
-        translatedContent: response.text || "",
-        targetLanguage: langLabel
+        translatedContent: header + translations.join("\n"),
+        targetLanguage: langLabel,
+        engine
       });
     } catch (err2) {
       console.error("Translation error:", err2);
       return res.status(500).json({
-        error: err2.message || "Errore durante la traduzione del documento PDF."
+        error: err2?.message || "Errore durante la traduzione del documento."
       });
     }
   });
   app.post("/api/translate-load-ai", requireAuth, async (req, res) => {
     try {
-      const { load, targetLanguage = "en" } = req.body;
+      const { load, targetLanguage = "en" } = req.body || {};
       if (!load) {
         return res.status(400).json({ error: "Nessun carico da tradurre fornito." });
       }
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        return res.status(503).json({
-          error: "GEMINI_API_KEY non configurata",
-          fallbackNeeded: true
+      if (targetLanguage === "it") {
+        return res.json({
+          success: true,
+          engine: "native",
+          translatedData: {
+            title: load.title || "",
+            destination: load.destination || "",
+            client: load.client || "",
+            carrier: load.carrier || "",
+            pallets: (load.pallets || []).map((p) => ({
+              id: p.id,
+              label: p.label || "",
+              notes: p.notes || ""
+            })),
+            boxes: (load.boxes || []).map((b) => ({
+              id: b.id,
+              label: b.label || ""
+            })),
+            items: (load.items || []).map((it) => ({
+              id: it.id,
+              name: it.name || "",
+              category: it.category || "",
+              notes: it.notes || ""
+            }))
+          }
         });
       }
-      const { GoogleGenAI: GoogleGenAI3 } = await Promise.resolve().then(() => (init_node(), node_exports));
-      const ai = new GoogleGenAI3({
-        apiKey,
-        httpOptions: {
-          headers: {
-            "User-Agent": "aistudio-build"
-          }
-        }
-      });
-      const languageNames = {
-        it: "Italian (Italiano)",
-        en: "English (customs, freight and logistics international terminology)",
-        de: "German (Deutsch - Fachbegriffe Logistik & Spedition)",
-        fr: "French (Fran\xE7ais - transport et logistique internationale)",
-        es: "Spanish (Espa\xF1ol - transporte y log\xEDstica)",
-        pt: "Portuguese (Portugu\xEAs - transporte e log\xEDstica)",
-        nl: "Dutch (Nederlands - transport en logistiek)",
-        pl: "Polish (Polski - transport i logistyka)",
-        ro: "Romanian (Rom\xE2n\u0103 - transport \u0219i logistic\u0103)"
+      const bucket = [];
+      const push = (v) => {
+        const idx = bucket.length;
+        bucket.push(String(v ?? ""));
+        return idx;
       };
-      const langTarget = languageNames[targetLanguage] || "English";
-      const toTranslate = {
-        title: load.title || "",
-        destination: load.destination || "",
+      const titleIdx = push(load.title);
+      const destIdx = push(load.destination);
+      const palletIdxs = (load.pallets || []).map((p) => ({
+        id: p.id,
+        label: push(p.label),
+        notes: push(p.notes)
+      }));
+      const boxIdxs = (load.boxes || []).map((b) => ({
+        id: b.id,
+        label: push(b.label)
+      }));
+      const itemIdxs = (load.items || []).map((it) => ({
+        id: it.id,
+        name: push(it.name),
+        category: push(it.category),
+        notes: push(it.notes)
+      }));
+      const { translations, engine } = await translateTextsZeroApiKey(
+        bucket,
+        String(targetLanguage)
+      );
+      const translatedData = {
+        title: translations[titleIdx] || load.title || "",
+        destination: translations[destIdx] || load.destination || "",
         client: load.client || "",
         carrier: load.carrier || "",
-        pallets: (load.pallets || []).map((p) => ({
+        pallets: palletIdxs.map((p) => ({
           id: p.id,
-          label: p.label || "",
-          notes: p.notes || ""
+          label: translations[p.label] || "",
+          notes: translations[p.notes] || ""
         })),
-        boxes: (load.boxes || []).map((b) => ({
+        boxes: boxIdxs.map((b) => ({
           id: b.id,
-          label: b.label || ""
+          label: translations[b.label] || ""
         })),
-        items: (load.items || []).map((it) => ({
+        items: itemIdxs.map((it) => ({
           id: it.id,
-          name: it.name || "",
-          category: it.category || "",
-          notes: it.notes || ""
+          name: translations[it.name] || "",
+          category: translations[it.category] || "",
+          notes: translations[it.notes] || ""
         }))
       };
-      const prompt = `You are a professional logistics, customs export, and warehouse freight document translator.
-Translate the following shipment items, box labels, pallet descriptions, and job notes from Italian into ${langTarget}.
-RULES:
-1. Translate item names, categories, box labels, pallet notes, and shipping descriptions into clear, accurate international logistics terminology.
-2. PRESERVE exact SKUs, part numbers, RAL codes, serial codes, dimensions (e.g. 80x120 cm), and numbers exactly as given.
-3. Return ONLY a valid JSON object matching the exact structure below, with the same ids:
-{
-  "title": "translated title",
-  "destination": "translated destination or address notes",
-  "client": "translated or preserved client name",
-  "carrier": "translated or preserved carrier name",
-  "pallets": [
-    { "id": "original_id", "label": "translated label", "notes": "translated notes" }
-  ],
-  "boxes": [
-    { "id": "original_id", "label": "translated label" }
-  ],
-  "items": [
-    { "id": "original_id", "name": "translated item name", "category": "translated category", "notes": "translated notes" }
-  ]
-}
-
-Input data to translate:
-${JSON.stringify(toTranslate, null, 2)}`;
-      const { ThinkingLevel: ThinkingLevel2 } = await Promise.resolve().then(() => (init_node(), node_exports));
-      const response = await ai.models.generateContent({
-        model: "gemini-4-hydrogen",
-        contents: prompt,
-        config: {
-          thinkingConfig: { thinkingLevel: ThinkingLevel2.LOW },
-          responseMimeType: "application/json"
-        }
-      });
-      const responseText = response.text || "";
-      const cleanJson = responseText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-      const translatedData = JSON.parse(cleanJson);
       return res.json({
         success: true,
-        engine: "gemini",
-        model: "gemini-4-hydrogen",
+        engine,
         translatedData
       });
     } catch (err2) {
-      console.error("AI Load Translation error:", err2);
+      console.error("Load Translation error:", err2);
       return res.status(500).json({
-        error: err2.message || "Errore durante la traduzione AI del carico.",
+        error: err2?.message || "Errore durante la traduzione del carico.",
         fallbackNeeded: true
       });
     }
@@ -228479,73 +229886,72 @@ ${JSON.stringify(toTranslate, null, 2)}`;
       }
       const safeTexts = texts.slice(0, 180).map((t2) => String(t2 ?? "").slice(0, 1e3));
       const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        return res.status(503).json({
-          error: "GEMINI_API_KEY non configurata sul server.",
-          fallbackNeeded: true
-        });
-      }
-      const languageNames = {
-        en: "English (international industrial, warehouse & logistics terminology)",
-        de: "German (Deutsch - Industrie, Lager & Logistik)",
-        fr: "French (Fran\xE7ais - industrie, entrep\xF4t & logistique)",
-        es: "Spanish (Espa\xF1ol - industria, almac\xE9n y log\xEDstica)",
-        pt: "Portuguese (Portugu\xEAs - ind\xFAstria, armaz\xE9m e log\xEDstica)",
-        nl: "Dutch (Nederlands - industrie, magazijn & logistiek)",
-        pl: "Polish (Polski - przemys\u0142, magazyn i logistyka)",
-        ro: "Romanian (Rom\xE2n\u0103 - industrie, depozit \u0219i logistic\u0103)"
-      };
-      const targetLangName = languageNames[String(targetLanguage)] || "English";
-      const { GoogleGenAI: GoogleGenAI3, Type: Type2, ThinkingLevel: ThinkingLevel2 } = await Promise.resolve().then(() => (init_node(), node_exports));
-      const ai = new GoogleGenAI3({
-        apiKey,
-        httpOptions: {
-          headers: {
-            "User-Agent": "aistudio-build"
-          }
-        }
-      });
-      const response = await ai.models.generateContent({
-        model: "gemini-4-hydrogen",
-        contents: `Translate each string in the input array into ${targetLangName}.
+      if (apiKey) {
+        try {
+          const languageNames = {
+            en: "English (international industrial, warehouse & logistics terminology)",
+            de: "German (Deutsch - Industrie, Lager & Logistik)",
+            fr: "French (Fran\xE7ais - industrie, entrep\xF4t & logistique)",
+            es: "Spanish (Espa\xF1ol - industria, almac\xE9n y log\xEDstica)",
+            pt: "Portuguese (Portugu\xEAs - ind\xFAstria, armaz\xE9m e log\xEDstica)",
+            nl: "Dutch (Nederlands - industrie, magazijn & logistiek)",
+            pl: "Polish (Polski - przemys\u0142, magazyn i logistyka)",
+            ro: "Romanian (Rom\xE2n\u0103 - industrie, depozit \u0219i logistic\u0103)"
+          };
+          const targetLangName = languageNames[String(targetLanguage)] || "English";
+          const { GoogleGenAI: GoogleGenAI3, Type: Type2, ThinkingLevel: ThinkingLevel2 } = await Promise.resolve().then(() => (init_node(), node_exports));
+          const ai = new GoogleGenAI3({
+            apiKey,
+            httpOptions: { headers: { "User-Agent": "aistudio-build" } }
+          });
+          const response = await ai.models.generateContent({
+            model: "gemini-4-hydrogen",
+            contents: `Translate each string in the input array into ${targetLangName}.
 Context: ${String(domain).slice(0, 200)}.
-RULES:
-1. Return the EXACT same number of items in the EXACT same order as the input array.
-2. Preserve exact SKU codes, barcodes, RAL color codes (e.g. RAL 7016), dimensions (e.g. 80x120 cm), part numbers, company proper names, addresses, dates, and numbers verbatim.
-3. Keep label translations concise and suitable for printed industrial labels and shipping PDFs.
-4. If a string is empty or already just a code/number, return it unchanged.
-
+Preserve exact SKU codes, barcodes, RAL color codes, dimensions, part numbers, proper names, and numbers verbatim.
 Input JSON array (${safeTexts.length} items):
 ${JSON.stringify(safeTexts)}`,
-        config: {
-          thinkingConfig: { thinkingLevel: ThinkingLevel2.LOW },
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type2.OBJECT,
-            properties: {
-              translations: {
-                type: Type2.ARRAY,
-                items: { type: Type2.STRING }
+            config: {
+              thinkingConfig: { thinkingLevel: ThinkingLevel2.LOW },
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type2.OBJECT,
+                properties: {
+                  translations: { type: Type2.ARRAY, items: { type: Type2.STRING } }
+                }
               }
             }
+          });
+          const raw = (response.text || "").trim();
+          const parsed = JSON.parse(raw);
+          const out = Array.isArray(parsed?.translations) ? parsed.translations : [];
+          if (out.length === safeTexts.length) {
+            const aligned = safeTexts.map(
+              (orig, idx) => typeof out[idx] === "string" && out[idx].trim() ? out[idx] : orig
+            );
+            return res.json({
+              success: true,
+              engine: "gemini",
+              translations: aligned
+            });
           }
+        } catch (aiErr) {
+          console.warn("Batch translation AI fallback to zero-API engine:", aiErr);
         }
-      });
-      const raw = (response.text || "").trim();
-      const parsed = JSON.parse(raw);
-      const out = Array.isArray(parsed?.translations) ? parsed.translations : [];
-      const aligned = safeTexts.map(
-        (orig, idx) => typeof out[idx] === "string" && out[idx].trim() ? out[idx] : orig
+      }
+      const { translations, engine } = await translateTextsZeroApiKey(
+        safeTexts,
+        String(targetLanguage)
       );
       return res.json({
         success: true,
-        model: "gemini-4-hydrogen",
-        translations: aligned
+        engine,
+        translations
       });
     } catch (err2) {
-      console.error("AI Batch Translation error:", err2);
+      console.error("Batch Translation error:", err2);
       return res.status(500).json({
-        error: err2?.message || "Errore traduzione AI testi stampa.",
+        error: err2?.message || "Errore traduzione testi stampa.",
         fallbackNeeded: true
       });
     }
@@ -228564,7 +229970,7 @@ ${JSON.stringify(safeTexts)}`,
       const cleanBase64 = typeof fileBase64 === "string" ? fileBase64.trim() : "";
       if (!cleanText && !cleanBase64) {
         return res.status(400).json({
-          error: "Inserisci un messaggio (WhatsApp/Email) oppure allega un PDF o un\u2019immagine."
+          error: "Inserisci un messaggio (WhatsApp/Email) oppure allega un PDF o un testo."
         });
       }
       if (cleanText.length > 4e4) {
@@ -228587,24 +229993,9 @@ ${JSON.stringify(safeTexts)}`,
       ]);
       if (cleanBase64 && !allowedMimes.has(String(fileMimeType || ""))) {
         return res.status(400).json({
-          error: "Formato allegato non supportato. Usa PDF, PNG, JPG o WEBP."
+          error: "Formato allegato non supportato. Usa PDF, PNG, JPG, WEBP o TXT."
         });
       }
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        return res.status(503).json({
-          error: "Servizio AI non configurato sul server (GEMINI_API_KEY mancante)."
-        });
-      }
-      const { GoogleGenAI: GoogleGenAI3, Type: Type2, ThinkingLevel: ThinkingLevel2 } = await Promise.resolve().then(() => (init_node(), node_exports));
-      const ai = new GoogleGenAI3({
-        apiKey,
-        httpOptions: {
-          headers: {
-            "User-Agent": "aistudio-build"
-          }
-        }
-      });
       const safeCatalog = Array.isArray(catalogSummary) ? catalogSummary.slice(0, 250).map((c) => ({
         id: String(c?.id || ""),
         sku: String(c?.sku || ""),
@@ -228621,109 +230012,110 @@ ${JSON.stringify(safeTexts)}`,
         shippingAddress: String(c?.shippingAddress || ""),
         paymentTerms: String(c?.paymentTerms || "")
       })) : [];
-      const todayIso = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-      const systemInstruction = `Sei il Direttore Operativo e Commerciale AI di METATRON CaricoStudio, gestionale italiano di magazzino, logistica, carpenteria e forniture industriali.
-Il tuo compito \xE8 leggere una richiesta cliente disordinata (messaggio WhatsApp, email, appunti telefonici, PDF di richiesta offerta o foto di foglio scritto a mano) e trasformarla in dati operativi strutturati perfetti per generare Preventivo, Commessa, controllo scorte e piano di carico bancali/camion.
-
-REGOLE RIGOROSE:
-1. Riconosci TUTTI gli articoli richiesti anche se scritti con abbreviazioni, errori di battitura, gergo da cantiere o dialetto (es. "staffe 40", "viti m8 inox 2 scatole", "profilo 3m", "pannelli grigi").
-2. Abbina ogni articolo al CATALOGO MAGAZZINO fornito quando esiste una corrispondenza semantica o di codice:
-   - Se trovi corrispondenza nel catalogo, valorizza "matchedInventoryId" con l'esatto "id" del catalogo, usa il suo "sku", "unit" e "supplierName" reali, e imposta matchConfidence = "alta" (match chiaro) o "media" (match probabile).
-   - Se l'articolo NON esiste nel catalogo, lascia "matchedInventoryId": "", genera uno SKU pulito (es. "NEW-001", "MAT-040") e imposta matchConfidence = "nuovo_articolo".
-3. Estrai quantit\xE0 numeriche realistiche e positive. Se il cliente scrive "2 scatole da 50" o "una decina", calcola la quantit\xE0 corretta coerente con l'unit\xE0 di misura.
-4. Stima un peso unitario realistico in kg ("estimatedUnitWeightKg", es. 0.05 per minuteria/viteria, 1.2 per staffe/accessori, 8-25 per profili/pannelli/motori) e un costo unitario industriale stimato in EUR ("estimatedUnitCostEur") sensato cos\xEC il preventivo \xE8 subito pronto e rifinibile.
-5. Abbina il cliente alla RUBRICA CLIENTI se presente ("matchedContactId"); altrimenti lascia "" e metti il nome estratto in "clientName".
-6. Se viene indicata una data consegna relativa (es. "entro venerd\xEC", "tra 4 giorni", "domani"), calcolala rispetto a oggi (${todayIso}) in formato YYYY-MM-DD. Se non specificata, proponi una data realistica a +4 giorni lavorativi.
-7. Scrivi una bozza di "customerReplyMessage" breve, professionale e cortese in italiano pronta da inviare su WhatsApp o Email.
-8. Rispondi ESCLUSIVAMENTE nel JSON conforme allo schema.`;
-      const contextText = `DATA DI OGGI: ${todayIso}
-
-CATALOGO MAGAZZINO ATTUALE (${safeCatalog.length} articoli):
-${JSON.stringify(safeCatalog)}
-
-RUBRICA CLIENTI (${safeContacts.length} contatti):
-${JSON.stringify(safeContacts)}
-
-${cleanText ? `MESSAGGIO / TESTO RICEVUTO DAL CLIENTE:
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (apiKey) {
+        try {
+          const { GoogleGenAI: GoogleGenAI3, Type: Type2, ThinkingLevel: ThinkingLevel2 } = await Promise.resolve().then(() => (init_node(), node_exports));
+          const ai = new GoogleGenAI3({
+            apiKey,
+            httpOptions: { headers: { "User-Agent": "aistudio-build" } }
+          });
+          const todayIso = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+          const systemInstruction = `Sei il Direttore Operativo e Commerciale di METATRON CaricoStudio.
+Leggi la richiesta cliente e restituisci JSON strutturato per Preventivo, Commessa, scorte e carico camion.
+Abbina gli articoli al CATALOGO MAGAZZINO fornito (matchedInventoryId) e il cliente alla RUBRICA CLIENTI (matchedContactId) quando possibile.
+Data odierna: ${todayIso}. Rispondi esclusivamente in JSON conforme allo schema.`;
+          const contextText = `DATA DI OGGI: ${todayIso}
+CATALOGO MAGAZZINO (${safeCatalog.length}): ${JSON.stringify(safeCatalog)}
+RUBRICA CLIENTI (${safeContacts.length}): ${JSON.stringify(safeContacts)}
+${cleanText ? `MESSAGGIO:
 """
 ${cleanText}
-"""` : "Analizza attentamente il documento/immagine allegato."}
+"""` : "Analizza il documento allegato."}
 ${fileName ? `
-NOME FILE ALLEGATO: ${fileName}` : ""}`;
-      const parts = [];
-      if (cleanBase64 && fileMimeType) {
-        parts.push({
-          inlineData: {
-            mimeType: String(fileMimeType),
-            data: cleanBase64
+NOME FILE: ${fileName}` : ""}`;
+          const parts = [];
+          if (cleanBase64 && fileMimeType) {
+            parts.push({ inlineData: { mimeType: String(fileMimeType), data: cleanBase64 } });
           }
-        });
-      }
-      parts.push({ text: contextText });
-      const response = await ai.models.generateContent({
-        model: "gemini-4-hydrogen",
-        contents: { parts },
-        config: {
-          systemInstruction,
-          thinkingConfig: { thinkingLevel: ThinkingLevel2.LOW },
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type2.OBJECT,
-            properties: {
-              clientName: { type: Type2.STRING },
-              matchedContactId: { type: Type2.STRING },
-              destination: { type: Type2.STRING },
-              requestedDeliveryDate: { type: Type2.STRING },
-              urgency: { type: Type2.STRING },
-              projectTitle: { type: Type2.STRING },
-              suggestedCommessaCode: { type: Type2.STRING },
-              paymentTerms: { type: Type2.STRING },
-              summaryNotes: { type: Type2.STRING },
-              customerReplyMessage: { type: Type2.STRING },
-              items: {
-                type: Type2.ARRAY,
-                items: {
-                  type: Type2.OBJECT,
-                  properties: {
-                    rawMention: { type: Type2.STRING },
-                    matchedInventoryId: { type: Type2.STRING },
-                    sku: { type: Type2.STRING },
-                    name: { type: Type2.STRING },
-                    category: { type: Type2.STRING },
-                    unit: { type: Type2.STRING },
-                    quantity: { type: Type2.NUMBER },
-                    estimatedUnitWeightKg: { type: Type2.NUMBER },
-                    estimatedUnitCostEur: { type: Type2.NUMBER },
-                    fragile: { type: Type2.BOOLEAN },
-                    dimensionsCm: { type: Type2.STRING },
-                    matchConfidence: { type: Type2.STRING },
-                    matchReason: { type: Type2.STRING },
-                    supplierName: { type: Type2.STRING },
-                    notes: { type: Type2.STRING }
+          parts.push({ text: contextText });
+          const response = await ai.models.generateContent({
+            model: "gemini-4-hydrogen",
+            contents: { parts },
+            config: {
+              systemInstruction,
+              thinkingConfig: { thinkingLevel: ThinkingLevel2.LOW },
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type2.OBJECT,
+                properties: {
+                  clientName: { type: Type2.STRING },
+                  matchedContactId: { type: Type2.STRING },
+                  destination: { type: Type2.STRING },
+                  requestedDeliveryDate: { type: Type2.STRING },
+                  urgency: { type: Type2.STRING },
+                  projectTitle: { type: Type2.STRING },
+                  suggestedCommessaCode: { type: Type2.STRING },
+                  paymentTerms: { type: Type2.STRING },
+                  summaryNotes: { type: Type2.STRING },
+                  customerReplyMessage: { type: Type2.STRING },
+                  items: {
+                    type: Type2.ARRAY,
+                    items: {
+                      type: Type2.OBJECT,
+                      properties: {
+                        rawMention: { type: Type2.STRING },
+                        matchedInventoryId: { type: Type2.STRING },
+                        sku: { type: Type2.STRING },
+                        name: { type: Type2.STRING },
+                        category: { type: Type2.STRING },
+                        unit: { type: Type2.STRING },
+                        quantity: { type: Type2.NUMBER },
+                        estimatedUnitWeightKg: { type: Type2.NUMBER },
+                        estimatedUnitCostEur: { type: Type2.NUMBER },
+                        fragile: { type: Type2.BOOLEAN },
+                        dimensionsCm: { type: Type2.STRING },
+                        matchConfidence: { type: Type2.STRING },
+                        matchReason: { type: Type2.STRING },
+                        supplierName: { type: Type2.STRING },
+                        notes: { type: Type2.STRING }
+                      }
+                    }
                   }
                 }
               }
             }
+          });
+          const rawJson = (response.text || "").trim();
+          if (rawJson) {
+            return res.json({
+              success: true,
+              engine: "gemini",
+              data: JSON.parse(rawJson)
+            });
           }
+        } catch (aiErr) {
+          console.warn("Autopilot AI fallback to local zero-API parser:", aiErr);
         }
-      });
-      const rawJson = (response.text || "").trim();
-      if (!rawJson) {
-        return res.status(502).json({
-          error: "Risposta vuota dal motore AI. Riprova con un testo o file pi\xF9 leggibile."
-        });
       }
-      const parsed = JSON.parse(rawJson);
+      const localData = parseClientRequestZeroApiKey({
+        rawText: cleanText,
+        fileBase64: cleanBase64 || void 0,
+        fileMimeType: String(fileMimeType || ""),
+        fileName: String(fileName || ""),
+        catalogSummary: safeCatalog,
+        contactsSummary: safeContacts
+      });
       return res.json({
         success: true,
-        model: "gemini-4-hydrogen",
-        data: parsed
+        engine: "local-zero-api",
+        data: localData
       });
     } catch (err2) {
-      console.error("AI Order Autopilot error:", err2);
-      const msg = String(err2?.message || "Errore durante l\u2019analisi AI della richiesta.");
-      const statusCode = msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED") ? 429 : msg.includes("403") || msg.includes("PERMISSION_DENIED") ? 403 : 500;
-      return res.status(statusCode).json({ error: msg });
+      console.error("Order Autopilot error:", err2);
+      return res.status(500).json({
+        error: err2?.message || "Errore durante l\u2019analisi della richiesta."
+      });
     }
   });
   if (process.env.NODE_ENV !== "production") {
