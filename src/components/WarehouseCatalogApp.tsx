@@ -2757,10 +2757,10 @@ export const WarehouseCatalogApp: React.FC<WarehouseCatalogAppProps> = ({
                           type="button"
                           onClick={() => setQrSheetOpen(true)}
                           className="px-3 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-950 text-xs font-semibold flex items-center gap-1.5 cursor-pointer whitespace-nowrap transition-colors"
-                          title="Stampa i QR Comandi Rapidi da attaccare al banco (CARICO, SCARICO, ×5, ×10, CONFERMA)"
+                          title="Stampa i Barcode 1D e QR Comandi Rapidi da attaccare al banco (CARICO, SCARICO, ×5, ×10, CONFERMA)"
                         >
-                          <QrCode className="w-3.5 h-3.5 text-amber-800" />
-                          <span>Plancia QR Comandi</span>
+                          <ScanBarcode className="w-3.5 h-3.5 text-amber-800" />
+                          <span>Plancia Barcode / QR</span>
                         </button>
                       </div>
                     </div>

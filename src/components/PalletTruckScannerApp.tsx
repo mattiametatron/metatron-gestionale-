@@ -982,10 +982,10 @@ export const PalletTruckScannerApp: React.FC<PalletTruckScannerAppProps> = ({
             type="button"
             onClick={() => setQrSheetOpen(true)}
             className="h-9 px-3 rounded-lg bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-950 text-xs font-semibold flex items-center gap-1.5 cursor-pointer whitespace-nowrap transition-colors"
-            title="Stampa la Plancia QR Comandi Rapidi da Banco"
+            title="Stampa la Plancia Barcode 1D e QR Comandi Rapidi da Banco"
           >
-            <QrCode className="w-3.5 h-3.5 text-amber-800" />
-            <span>Plancia QR</span>
+            <ScanBarcode className="w-3.5 h-3.5 text-amber-800" />
+            <span>Plancia 1D / QR</span>
           </button>
 
           <button
