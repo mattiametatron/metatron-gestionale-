@@ -5498,10 +5498,15 @@ Formatta la risposta in markdown ben strutturato con titoli, tabelle e sezioni c
       });
 
       const languageNames: Record<string, string> = {
+        it: 'Italian (Italiano)',
         en: 'English (customs, freight and logistics international terminology)',
         de: 'German (Deutsch - Fachbegriffe Logistik & Spedition)',
         fr: 'French (Français - transport et logistique internationale)',
         es: 'Spanish (Español - transporte y logística)',
+        pt: 'Portuguese (Português - transporte e logística)',
+        nl: 'Dutch (Nederlands - transport en logistiek)',
+        pl: 'Polish (Polski - transport i logistyka)',
+        ro: 'Romanian (Română - transport și logistică)',
       };
 
       const langTarget = languageNames[targetLanguage] || 'English';
@@ -5532,7 +5537,7 @@ Formatta la risposta in markdown ben strutturato con titoli, tabelle e sezioni c
 Translate the following shipment items, box labels, pallet descriptions, and job notes from Italian into ${langTarget}.
 RULES:
 1. Translate item names, categories, box labels, pallet notes, and shipping descriptions into clear, accurate international logistics terminology.
-2. PRESERVE exact SKUs, part numbers, serial codes, dimensions (e.g. 80x120 cm), and numbers exactly as given.
+2. PRESERVE exact SKUs, part numbers, RAL codes, serial codes, dimensions (e.g. 80x120 cm), and numbers exactly as given.
 3. Return ONLY a valid JSON object matching the exact structure below, with the same ids:
 {
   "title": "translated title",
@@ -5553,10 +5558,12 @@ RULES:
 Input data to translate:
 ${JSON.stringify(toTranslate, null, 2)}`;
 
+      const { ThinkingLevel } = await import('@google/genai');
       const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: 'gemini-4-hydrogen',
         contents: prompt,
         config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
           responseMimeType: 'application/json',
         },
       });
@@ -5568,7 +5575,7 @@ ${JSON.stringify(toTranslate, null, 2)}`;
       return res.json({
         success: true,
         engine: 'gemini',
-        model: 'gemini-3.8-flash',
+        model: 'gemini-4-hydrogen',
         translatedData,
       });
     } catch (err: any) {
@@ -5577,6 +5584,306 @@ ${JSON.stringify(toTranslate, null, 2)}`;
         error: err.message || 'Errore durante la traduzione AI del carico.',
         fallbackNeeded: true,
       });
+    }
+  });
+
+  // Universal AI Batch Text Translator for ALL Labels, Tags, DDT, Purchase Orders, Quotes & Printouts
+  app.post('/api/ai/translate-texts', requireAuth, async (req, res) => {
+    try {
+      const {
+        texts = [],
+        targetLanguage = 'en',
+        domain = 'industrial warehouse labels, shipping, DDT, purchase orders and commercial quotes',
+      } = req.body || {};
+
+      if (!Array.isArray(texts) || texts.length === 0) {
+        return res.json({ success: true, translations: [] });
+      }
+
+      if (targetLanguage === 'it') {
+        return res.json({
+          success: true,
+          translations: texts.map((t: unknown) => String(t ?? '')),
+        });
+      }
+
+      const safeTexts = texts.slice(0, 180).map((t: unknown) => String(t ?? '').slice(0, 1000));
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(503).json({
+          error: 'GEMINI_API_KEY non configurata sul server.',
+          fallbackNeeded: true,
+        });
+      }
+
+      const languageNames: Record<string, string> = {
+        en: 'English (international industrial, warehouse & logistics terminology)',
+        de: 'German (Deutsch - Industrie, Lager & Logistik)',
+        fr: 'French (Français - industrie, entrepôt & logistique)',
+        es: 'Spanish (Español - industria, almacén y logística)',
+        pt: 'Portuguese (Português - indústria, armazém e logística)',
+        nl: 'Dutch (Nederlands - industrie, magazijn & logistiek)',
+        pl: 'Polish (Polski - przemysł, magazyn i logistyka)',
+        ro: 'Romanian (Română - industrie, depozit și logistică)',
+      };
+
+      const targetLangName = languageNames[String(targetLanguage)] || 'English';
+
+      const { GoogleGenAI, Type, ThinkingLevel } = await import('@google/genai');
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          },
+        },
+      });
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents: `Translate each string in the input array into ${targetLangName}.
+Context: ${String(domain).slice(0, 200)}.
+RULES:
+1. Return the EXACT same number of items in the EXACT same order as the input array.
+2. Preserve exact SKU codes, barcodes, RAL color codes (e.g. RAL 7016), dimensions (e.g. 80x120 cm), part numbers, company proper names, addresses, dates, and numbers verbatim.
+3. Keep label translations concise and suitable for printed industrial labels and shipping PDFs.
+4. If a string is empty or already just a code/number, return it unchanged.
+
+Input JSON array (${safeTexts.length} items):
+${JSON.stringify(safeTexts)}`,
+        config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              translations: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+              },
+            },
+          },
+        },
+      });
+
+      const raw = (response.text || '').trim();
+      const parsed = JSON.parse(raw);
+      const out = Array.isArray(parsed?.translations) ? parsed.translations : [];
+      const aligned = safeTexts.map((orig: string, idx: number) =>
+        typeof out[idx] === 'string' && out[idx].trim() ? out[idx] : orig
+      );
+
+      return res.json({
+        success: true,
+        model: 'gemini-4-hydrogen',
+        translations: aligned,
+      });
+    } catch (err: any) {
+      console.error('AI Batch Translation error:', err);
+      return res.status(500).json({
+        error: err?.message || 'Errore traduzione AI testi stampa.',
+        fallbackNeeded: true,
+      });
+    }
+  });
+
+  // AI Autopilot: Da WhatsApp / Email / PDF / Foto a Preventivo + Commessa + Scorte + Piano Camion
+  app.post('/api/ai/parse-client-request', requireAuth, async (req, res) => {
+    try {
+      const {
+        rawText = '',
+        fileBase64 = '',
+        fileMimeType = '',
+        fileName = '',
+        catalogSummary = [],
+        contactsSummary = [],
+      } = req.body || {};
+
+      const cleanText = typeof rawText === 'string' ? rawText.trim() : '';
+      const cleanBase64 = typeof fileBase64 === 'string' ? fileBase64.trim() : '';
+
+      if (!cleanText && !cleanBase64) {
+        return res.status(400).json({
+          error: 'Inserisci un messaggio (WhatsApp/Email) oppure allega un PDF o un’immagine.',
+        });
+      }
+
+      if (cleanText.length > 40000) {
+        return res.status(400).json({
+          error: 'Testo troppo lungo (massimo 40.000 caratteri).',
+        });
+      }
+
+      if (cleanBase64.length > 16 * 1024 * 1024) {
+        return res.status(400).json({
+          error: 'File allegato troppo grande (massimo 12 MB).',
+        });
+      }
+
+      const allowedMimes = new Set([
+        'application/pdf',
+        'image/png',
+        'image/jpeg',
+        'image/webp',
+        'image/gif',
+        'text/plain',
+      ]);
+      if (cleanBase64 && !allowedMimes.has(String(fileMimeType || ''))) {
+        return res.status(400).json({
+          error: 'Formato allegato non supportato. Usa PDF, PNG, JPG o WEBP.',
+        });
+      }
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(503).json({
+          error: 'Servizio AI non configurato sul server (GEMINI_API_KEY mancante).',
+        });
+      }
+
+      const { GoogleGenAI, Type, ThinkingLevel } = await import('@google/genai');
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          },
+        },
+      });
+
+      const safeCatalog = Array.isArray(catalogSummary)
+        ? catalogSummary.slice(0, 250).map((c: any) => ({
+            id: String(c?.id || ''),
+            sku: String(c?.sku || ''),
+            name: String(c?.name || ''),
+            category: String(c?.category || ''),
+            unit: String(c?.unit || 'pz'),
+            qty: Number(c?.quantity) || 0,
+            supplier: String(c?.supplier || ''),
+          }))
+        : [];
+
+      const safeContacts = Array.isArray(contactsSummary)
+        ? contactsSummary.slice(0, 120).map((c: any) => ({
+            id: String(c?.id || ''),
+            companyName: String(c?.companyName || ''),
+            city: String(c?.city || ''),
+            shippingAddress: String(c?.shippingAddress || ''),
+            paymentTerms: String(c?.paymentTerms || ''),
+          }))
+        : [];
+
+      const todayIso = new Date().toISOString().slice(0, 10);
+
+      const systemInstruction = `Sei il Direttore Operativo e Commerciale AI di METATRON CaricoStudio, gestionale italiano di magazzino, logistica, carpenteria e forniture industriali.
+Il tuo compito è leggere una richiesta cliente disordinata (messaggio WhatsApp, email, appunti telefonici, PDF di richiesta offerta o foto di foglio scritto a mano) e trasformarla in dati operativi strutturati perfetti per generare Preventivo, Commessa, controllo scorte e piano di carico bancali/camion.
+
+REGOLE RIGOROSE:
+1. Riconosci TUTTI gli articoli richiesti anche se scritti con abbreviazioni, errori di battitura, gergo da cantiere o dialetto (es. "staffe 40", "viti m8 inox 2 scatole", "profilo 3m", "pannelli grigi").
+2. Abbina ogni articolo al CATALOGO MAGAZZINO fornito quando esiste una corrispondenza semantica o di codice:
+   - Se trovi corrispondenza nel catalogo, valorizza "matchedInventoryId" con l'esatto "id" del catalogo, usa il suo "sku", "unit" e "supplierName" reali, e imposta matchConfidence = "alta" (match chiaro) o "media" (match probabile).
+   - Se l'articolo NON esiste nel catalogo, lascia "matchedInventoryId": "", genera uno SKU pulito (es. "NEW-001", "MAT-040") e imposta matchConfidence = "nuovo_articolo".
+3. Estrai quantità numeriche realistiche e positive. Se il cliente scrive "2 scatole da 50" o "una decina", calcola la quantità corretta coerente con l'unità di misura.
+4. Stima un peso unitario realistico in kg ("estimatedUnitWeightKg", es. 0.05 per minuteria/viteria, 1.2 per staffe/accessori, 8-25 per profili/pannelli/motori) e un costo unitario industriale stimato in EUR ("estimatedUnitCostEur") sensato così il preventivo è subito pronto e rifinibile.
+5. Abbina il cliente alla RUBRICA CLIENTI se presente ("matchedContactId"); altrimenti lascia "" e metti il nome estratto in "clientName".
+6. Se viene indicata una data consegna relativa (es. "entro venerdì", "tra 4 giorni", "domani"), calcolala rispetto a oggi (${todayIso}) in formato YYYY-MM-DD. Se non specificata, proponi una data realistica a +4 giorni lavorativi.
+7. Scrivi una bozza di "customerReplyMessage" breve, professionale e cortese in italiano pronta da inviare su WhatsApp o Email.
+8. Rispondi ESCLUSIVAMENTE nel JSON conforme allo schema.`;
+
+      const contextText = `DATA DI OGGI: ${todayIso}
+
+CATALOGO MAGAZZINO ATTUALE (${safeCatalog.length} articoli):
+${JSON.stringify(safeCatalog)}
+
+RUBRICA CLIENTI (${safeContacts.length} contatti):
+${JSON.stringify(safeContacts)}
+
+${cleanText ? `MESSAGGIO / TESTO RICEVUTO DAL CLIENTE:\n"""\n${cleanText}\n"""` : 'Analizza attentamente il documento/immagine allegato.'}
+${fileName ? `\nNOME FILE ALLEGATO: ${fileName}` : ''}`;
+
+      const parts: any[] = [];
+      if (cleanBase64 && fileMimeType) {
+        parts.push({
+          inlineData: {
+            mimeType: String(fileMimeType),
+            data: cleanBase64,
+          },
+        });
+      }
+      parts.push({ text: contextText });
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents: { parts },
+        config: {
+          systemInstruction,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              clientName: { type: Type.STRING },
+              matchedContactId: { type: Type.STRING },
+              destination: { type: Type.STRING },
+              requestedDeliveryDate: { type: Type.STRING },
+              urgency: { type: Type.STRING },
+              projectTitle: { type: Type.STRING },
+              suggestedCommessaCode: { type: Type.STRING },
+              paymentTerms: { type: Type.STRING },
+              summaryNotes: { type: Type.STRING },
+              customerReplyMessage: { type: Type.STRING },
+              items: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    rawMention: { type: Type.STRING },
+                    matchedInventoryId: { type: Type.STRING },
+                    sku: { type: Type.STRING },
+                    name: { type: Type.STRING },
+                    category: { type: Type.STRING },
+                    unit: { type: Type.STRING },
+                    quantity: { type: Type.NUMBER },
+                    estimatedUnitWeightKg: { type: Type.NUMBER },
+                    estimatedUnitCostEur: { type: Type.NUMBER },
+                    fragile: { type: Type.BOOLEAN },
+                    dimensionsCm: { type: Type.STRING },
+                    matchConfidence: { type: Type.STRING },
+                    matchReason: { type: Type.STRING },
+                    supplierName: { type: Type.STRING },
+                    notes: { type: Type.STRING },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      const rawJson = (response.text || '').trim();
+      if (!rawJson) {
+        return res.status(502).json({
+          error: 'Risposta vuota dal motore AI. Riprova con un testo o file più leggibile.',
+        });
+      }
+
+      const parsed = JSON.parse(rawJson);
+      return res.json({
+        success: true,
+        model: 'gemini-4-hydrogen',
+        data: parsed,
+      });
+    } catch (err: any) {
+      console.error('AI Order Autopilot error:', err);
+      const msg = String(err?.message || 'Errore durante l’analisi AI della richiesta.');
+      const statusCode =
+        msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED')
+          ? 429
+          : msg.includes('403') || msg.includes('PERMISSION_DENIED')
+          ? 403
+          : 500;
+      return res.status(statusCode).json({ error: msg });
     }
   });
 

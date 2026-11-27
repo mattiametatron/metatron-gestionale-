@@ -57,6 +57,7 @@ import {
   ShoppingCart,
   Loader2,
   AlertTriangle,
+  Sparkles,
 } from 'lucide-react';
 import { AuthUser, CargoLoad } from '../types/warehouse';
 import { DesktopAppIcon } from './DesktopAppIcon';
@@ -69,6 +70,8 @@ import {
   WHATS_NEW_RELEASE_KEY,
 } from './WhatsNewShowcaseModal';
 import { ZeroClickCommessaResult } from '../utils/localAutoEngine';
+import { usePrintLanguage } from '../utils/printLanguage';
+import { PrintLanguageSelector } from './PrintLanguageSelector';
 
 export type CaricoStudioSubAppId =
   | 'commesse'
@@ -100,7 +103,8 @@ export type SynologyAppId =
   | 'purchase_orders'
   | 'timini_print'
   | 'pallet_truck_scanner'
-  | 'excel_checklist_merger';
+  | 'excel_checklist_merger'
+  | 'ai_order_autopilot';
 
 export type DesktopWindowId =
   | 'caricostudio'
@@ -121,7 +125,8 @@ export type DesktopWindowId =
   | 'purchase_orders'
   | 'timini_print'
   | 'pallet_truck_scanner'
-  | 'excel_checklist_merger';
+  | 'excel_checklist_merger'
+  | 'ai_order_autopilot';
 
 export type WindowSnapMode = 'maximized' | 'floating' | 'left' | 'right';
 
@@ -329,6 +334,15 @@ export const DESKTOP_MAIN_APPS: DesktopAppDefinition[] = [
     iconBg: 'bg-gradient-to-b from-emerald-600 to-emerald-900',
     badgeText: () => 'Excel',
     icon: FileSpreadsheet,
+  },
+  {
+    id: 'ai_order_autopilot',
+    title: 'Autopilota Preventivi & Commesse AI — WhatsApp / Email / PDF',
+    shortTitle: 'Preventivi AI',
+    subtitle: 'Da messaggio cliente o PDF a Preventivo, Scorte, Riordini e Piano Camion in 10s',
+    iconBg: 'bg-gradient-to-b from-blue-800 to-slate-950',
+    badgeText: () => 'AI 10s',
+    icon: Sparkles,
   },
 ];
 
@@ -765,6 +779,17 @@ const DESKTOP_COLUMN_4: DesktopShortcutItem[] = [
     iconBg: 'bg-gradient-to-b from-emerald-600 to-emerald-900',
     icon: FileSpreadsheet,
     windowId: 'excel_checklist_merger',
+    action: 'open_window',
+  },
+  {
+    id: 'ai_order_autopilot',
+    label: 'Preventivi AI',
+    title: 'Autopilota Preventivi & Commesse AI — Da WhatsApp, Email o PDF a Preventivo + Commessa + Camion in 10s',
+    shortDesc: 'WhatsApp/PDF → Commessa',
+    studioGroup: 'logistica',
+    iconBg: 'bg-gradient-to-b from-blue-800 to-slate-950',
+    icon: Sparkles,
+    windowId: 'ai_order_autopilot',
     action: 'open_window',
   },
 ];
@@ -1294,6 +1319,7 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
   const [showNotifications, setShowNotifications] = useState<boolean>(false);
   const [showWidgetPanel, setShowWidgetPanel] = useState<boolean>(false);
   const [showWhatsNewModal, setShowWhatsNewModal] = useState<boolean>(false);
+  const [globalPrintLang, setGlobalPrintLang] = usePrintLanguage();
   const [liveNow, setLiveNow] = useState<Date>(() => new Date());
 
   // Nuova Commessa Zero-Click da file trascinato sul desktop (PDF / Excel / Foto)
@@ -1749,7 +1775,8 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
       appId === 'purchase_orders' ||
       appId === 'timini_print' ||
       appId === 'pallet_truck_scanner' ||
-      appId === 'excel_checklist_merger'
+      appId === 'excel_checklist_merger' ||
+      appId === 'ai_order_autopilot'
     ) {
       openDesktopWindow(appId, initialSnap);
       return;
@@ -3090,7 +3117,8 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
                 win.id === 'purchase_orders' ||
                 win.id === 'timini_print' ||
                 win.id === 'pallet_truck_scanner' ||
-                win.id === 'excel_checklist_merger' ? (
+                win.id === 'excel_checklist_merger' ||
+                win.id === 'ai_order_autopilot' ? (
                   renderAppContent(win.id, (targetId) => openApp(targetId))
                 ) : caricoStudioSubApp === 'home' ? (
                   /* HUB INTERNO DELLE APP DI CARICOSTUDIO */
@@ -4038,6 +4066,14 @@ export const SynologyDesktopOS: React.FC<SynologyDesktopOSProps> = ({
               <span>Direzione</span>
             </button>
           )}
+
+          <div className="hidden sm:flex items-center">
+            <PrintLanguageSelector
+              value={globalPrintLang}
+              onChange={setGlobalPrintLang}
+              variant="topbar"
+            />
+          </div>
 
           <button
             type="button"

@@ -56,6 +56,13 @@ import {
   TiMiniConnection,
   TiMiniLabelDesign,
 } from '../utils/timiniBluetoothPrinter';
+import {
+  getPrintLanguageOption,
+  PrintLanguageCode,
+  translateTextsForPrint,
+  usePrintLanguage,
+} from '../utils/printLanguage';
+import { PrintLanguageSelector } from './PrintLanguageSelector';
 
 interface TiMiniPrintAppProps {
   currentUser: AuthUser;
@@ -180,6 +187,40 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
   const [notice, setNotice] = useState<{ text: string; tone?: 'normal' | 'success' | 'error' } | null>(
     null
   );
+  const [printLang, setPrintLang] = usePrintLanguage();
+  const [isTranslatingLabel, setIsTranslatingLabel] = useState(false);
+
+  const handleChangePrintLanguage = async (nextLang: PrintLanguageCode) => {
+    setPrintLang(nextLang);
+    if (nextLang === 'it') return;
+    setIsTranslatingLabel(true);
+    try {
+      const fields = [
+        design.headerTag || '',
+        design.title || '',
+        design.subtitle || '',
+        design.footerText || '',
+      ];
+      const translated = await translateTextsForPrint(
+        fields,
+        nextLang,
+        'compact 57mm thermal warehouse label (preserve SKU, numbers, dates and shelf codes)'
+      );
+      setDesign((prev) => ({
+        ...prev,
+        headerTag: translated[0] || prev.headerTag,
+        title: translated[1] || prev.title,
+        subtitle: translated[2] || prev.subtitle,
+        footerText: translated[3] || prev.footerText,
+      }));
+      showNotice(
+        `Etichetta convertita in ${getPrintLanguageOption(nextLang).nativeName} (QR e Barcode invariati).`,
+        'success'
+      );
+    } finally {
+      setIsTranslatingLabel(false);
+    }
+  };
 
   // Sincronizza automaticamente con la commessa attiva su cui si sta lavorando
   useEffect(() => {
@@ -571,9 +612,30 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
   const renderBatchCanvases = async (
     records: ResolvedTrackingRecord[]
   ): Promise<HTMLCanvasElement[]> => {
+    const designs = records.map((rec) => buildTiMiniDesignFromTrackingRecord(rec));
+    let finalDesigns = designs;
+    if (printLang !== 'it' && designs.length > 0) {
+      const flatTexts = designs.flatMap((d) => [
+        d.headerTag || '',
+        d.title || '',
+        d.subtitle || '',
+        d.footerText || '',
+      ]);
+      const tx = await translateTextsForPrint(
+        flatTexts,
+        printLang,
+        'compact 57mm thermal pallet/box/item shipping labels (preserve SKUs, codes and numbers)'
+      );
+      finalDesigns = designs.map((d, idx) => ({
+        ...d,
+        headerTag: tx[idx * 4] || d.headerTag,
+        title: tx[idx * 4 + 1] || d.title,
+        subtitle: tx[idx * 4 + 2] || d.subtitle,
+        footerText: tx[idx * 4 + 3] || d.footerText,
+      }));
+    }
     const canvases: HTMLCanvasElement[] = [];
-    for (const rec of records) {
-      const d = buildTiMiniDesignFromTrackingRecord(rec);
+    for (const d of finalDesigns) {
       const raw = await renderTiMiniLabelCanvas(d);
       const { previewCanvas } = binarizeThermalCanvas(
         raw,
@@ -921,7 +983,14 @@ export const TiMiniPrintApp: React.FC<TiMiniPrintAppProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
+            <PrintLanguageSelector
+              value={printLang}
+              onChange={handleChangePrintLanguage}
+              isTranslating={isTranslatingLabel}
+              variant="light"
+              label="Lingua"
+            />
             <button
               type="button"
               onClick={handlePrintSystem}

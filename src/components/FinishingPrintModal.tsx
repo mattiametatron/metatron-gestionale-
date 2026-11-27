@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Printer,
   X,
@@ -19,6 +19,12 @@ import {
   generateFinishingCartelliPDF,
   openPdfBlobInNewTab,
 } from '../utils/pdfGenerator';
+import {
+  PrintLanguageCode,
+  translateFinishingTagsForPrint,
+  usePrintLanguage,
+} from '../utils/printLanguage';
+import { PrintLanguageSelector } from './PrintLanguageSelector';
 
 interface FinishingPrintModalProps {
   load: CargoLoad;
@@ -62,10 +68,37 @@ export const FinishingPrintModal: React.FC<FinishingPrintModalProps> = ({
     firstTag?.showItemsList === true
   );
 
+  const [printLang, setPrintLang] = usePrintLanguage();
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [translatedTagsByLang, setTranslatedTagsByLang] = useState<
+    Partial<Record<PrintLanguageCode, FinishingCartello[]>>
+  >({});
+
+  useEffect(() => {
+    if (printLang === 'it' || translatedTagsByLang[printLang]) return;
+    let active = true;
+    setIsTranslating(true);
+    translateFinishingTagsForPrint(tags, printLang)
+      .then((txTags) => {
+        if (active) setTranslatedTagsByLang((prev) => ({ ...prev, [printLang]: txTags }));
+      })
+      .finally(() => {
+        if (active) setIsTranslating(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [printLang, tags]);
+
+  const effectiveTags =
+    printLang !== 'it' && translatedTagsByLang[printLang]
+      ? translatedTagsByLang[printLang]!
+      : tags;
+
   const filteredTags =
     selectedTagId === 'all'
-      ? tags
-      : tags.filter((t) => t.id === selectedTagId);
+      ? effectiveTags
+      : effectiveTags.filter((t) => t.id === selectedTagId);
 
   const displayedSheets: {
     tag: FinishingCartello;
@@ -103,7 +136,8 @@ export const FinishingPrintModal: React.FC<FinishingPrintModalProps> = ({
   const handleDownloadPdf = () => {
     const doc = buildPdfDoc();
     const cleanCode = (load.code || 'COMMESSA').replace(/[^a-zA-Z0-9_-]/g, '_');
-    doc.save(`Cartelli_Verniciatura_${cleanCode}.pdf`);
+    const langSuffix = printLang === 'it' ? '' : `_${printLang.toUpperCase()}`;
+    doc.save(`Cartelli_Verniciatura_${cleanCode}${langSuffix}.pdf`);
   };
 
   const commessaFontClass =
@@ -149,6 +183,13 @@ export const FinishingPrintModal: React.FC<FinishingPrintModalProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <PrintLanguageSelector
+              value={printLang}
+              onChange={setPrintLang}
+              isTranslating={isTranslating}
+              variant="dark"
+              label="Lingua"
+            />
             {/* Selettore Layout */}
             <div className="flex items-center gap-1.5 bg-slate-800 px-2.5 py-1 rounded-xl border border-slate-700">
               <LayoutTemplate className="w-3.5 h-3.5 text-amber-400" />

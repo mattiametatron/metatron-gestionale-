@@ -52,6 +52,11 @@ import {
   createUniversalBarcodeReader,
   decodeBarcodeFromVideoFrame,
 } from '../utils/barcodeDecoder';
+import {
+  translateLoadForPrint,
+  usePrintLanguage,
+} from '../utils/printLanguage';
+import { PrintLanguageSelector } from './PrintLanguageSelector';
 
 export interface DispatchTrackingResult {
   timestampIso?: string;
@@ -141,6 +146,7 @@ export const QrLabelsA4Workspace: React.FC<QrLabelsA4WorkspaceProps> = ({
   const [palletFilterId, setPalletFilterId] = useState<string>('all');
   const [searchText, setSearchText] = useState('');
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [printLang, setPrintLang] = usePrintLanguage();
 
   // Scanner QR / Barcode condiviso (Pistola USB o Ricerca Manuale o Fotocamera)
   const [scannerInput, setScannerInput] = useState('');
@@ -571,7 +577,9 @@ export const QrLabelsA4Workspace: React.FC<QrLabelsA4WorkspaceProps> = ({
   const handleOpenA4Pdf = async () => {
     setIsGeneratingPdf(true);
     try {
-      await openTrackingLabelsA4PdfInNewTab(load, movements, {
+      const targetLoad =
+        printLang === 'it' ? load : await translateLoadForPrint(load, printLang);
+      await openTrackingLabelsA4PdfInNewTab(targetLoad, movements, {
         includePallets,
         includeBoxes,
         includeItems,
@@ -585,7 +593,9 @@ export const QrLabelsA4Workspace: React.FC<QrLabelsA4WorkspaceProps> = ({
   const handleDownloadA4Pdf = async () => {
     setIsGeneratingPdf(true);
     try {
-      await downloadTrackingLabelsA4Pdf(load, movements, {
+      const targetLoad =
+        printLang === 'it' ? load : await translateLoadForPrint(load, printLang);
+      await downloadTrackingLabelsA4Pdf(targetLoad, movements, {
         includePallets,
         includeBoxes,
         includeItems,
@@ -612,15 +622,22 @@ export const QrLabelsA4Workspace: React.FC<QrLabelsA4WorkspaceProps> = ({
     });
   };
 
-  const handleExportManifestPdf = (
+  const handleExportManifestPdf = async (
     targetLoad = load,
     opts?: { onlyShipped?: boolean; filterRecord?: ResolvedTrackingRecord | null }
   ) => {
-    downloadOutboundManifestPdf(targetLoad, movements, {
-      onlyShipped: opts?.onlyShipped ?? manifestOnlyShipped,
-      operatorName,
-      filterRecord: opts?.filterRecord ?? null,
-    });
+    setIsGeneratingPdf(true);
+    try {
+      const preparedLoad =
+        printLang === 'it' ? targetLoad : await translateLoadForPrint(targetLoad, printLang);
+      downloadOutboundManifestPdf(preparedLoad, movements, {
+        onlyShipped: opts?.onlyShipped ?? manifestOnlyShipped,
+        operatorName,
+        filterRecord: opts?.filterRecord ?? null,
+      });
+    } finally {
+      setIsGeneratingPdf(false);
+    }
   };
 
   const handlePreviewManifestPdf = (
@@ -697,6 +714,14 @@ export const QrLabelsA4Workspace: React.FC<QrLabelsA4WorkspaceProps> = ({
               )}
             </button>
           </div>
+
+          <PrintLanguageSelector
+            value={printLang}
+            onChange={setPrintLang}
+            isTranslating={isGeneratingPdf}
+            variant="light"
+            label="Etichette"
+          />
 
           {activeTab === 'labels' ? (
             <>

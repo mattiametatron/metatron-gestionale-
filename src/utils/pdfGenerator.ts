@@ -18,17 +18,24 @@ import {
   resolveAllTrackingRecordsForLoad,
   ResolvedTrackingRecord,
 } from './qrTrackingUtils';
+import {
+  applyPrintLanguageToJsPdf,
+  getPrintLanguage,
+} from './printLanguage';
 
 /**
  * Genera il documento PDF ufficiale della Commessa / Packing List / Check-list
  * con tutti i dettagli, materiali caricati, ubicazione (bancale/scatola/fuori scatola) e firme.
  */
 export function generatePackingListPDF(load: CargoLoad): jsPDF {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4',
-  });
+  const doc = applyPrintLanguageToJsPdf(
+    new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    }),
+    getPrintLanguage()
+  );
 
   const summary = calculateLoadSummary(load);
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -375,11 +382,14 @@ export function generateFinishingCartelliPDF(
   }
 ): jsPDF {
   const isLandscape = options.layoutFormat === 'a4_landscape';
-  const doc = new jsPDF({
-    orientation: isLandscape ? 'landscape' : 'portrait',
-    unit: 'mm',
-    format: 'a4',
-  });
+  const doc = applyPrintLanguageToJsPdf(
+    new jsPDF({
+      orientation: isLandscape ? 'landscape' : 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    }),
+    getPrintLanguage()
+  );
 
   const expanded: { tag: FinishingCartello; copyIndex: number; totalCopies: number }[] = [];
   const count = Math.max(1, Math.min(12, options.copiesPerTag || 1));
@@ -834,11 +844,14 @@ export function generatePalletSheetsPDF(
   load: CargoLoad,
   palletSummaries: PalletSummary[]
 ): jsPDF {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4',
-  });
+  const doc = applyPrintLanguageToJsPdf(
+    new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    }),
+    getPrintLanguage()
+  );
 
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
@@ -977,11 +990,14 @@ export function generateSelectiveLabelsPDF(
     return generatePalletSheetsPDF(load, filtered.length > 0 ? filtered : summary.palletSummaries);
   }
 
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4',
-  });
+  const doc = applyPrintLanguageToJsPdf(
+    new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    }),
+    getPrintLanguage()
+  );
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const margin = 12;
@@ -1095,11 +1111,14 @@ export function generateInventoryReportPDF(
   movements: StockMovement[],
   mode: 'giacenze' | 'movimenti'
 ): jsPDF {
-  const doc = new jsPDF({
-    orientation: mode === 'movimenti' ? 'landscape' : 'portrait',
-    unit: 'mm',
-    format: 'a4',
-  });
+  const doc = applyPrintLanguageToJsPdf(
+    new jsPDF({
+      orientation: mode === 'movimenti' ? 'landscape' : 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    }),
+    getPrintLanguage()
+  );
 
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
@@ -1239,11 +1258,14 @@ export function generatePackingProofDossierPDF(
   proofs: PackageVerificationProof[],
   linkedMovements: StockMovement[]
 ): jsPDF {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4',
-  });
+  const doc = applyPrintLanguageToJsPdf(
+    new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    }),
+    getPrintLanguage()
+  );
 
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
@@ -1791,11 +1813,14 @@ export function generateBoxAntiDisputeSealLabelPDF(
   boxIndex: number,
   totalBoxes: number
 ): jsPDF {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4',
-  });
+  const doc = applyPrintLanguageToJsPdf(
+    new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    }),
+    getPrintLanguage()
+  );
 
   const pageW = doc.internal.pageSize.getWidth();
   const margin = 13;
@@ -2012,11 +2037,14 @@ export async function generateAllTrackingLabelsA4PDF(
     palletFilterId: 'all',
   }
 ): Promise<jsPDF> {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4',
-  });
+  const doc = applyPrintLanguageToJsPdf(
+    new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    }),
+    getPrintLanguage()
+  );
 
   const allRecords = resolveAllTrackingRecordsForLoad(load, movements);
   const palletCodeFilter =

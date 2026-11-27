@@ -29,6 +29,8 @@ import {
 } from '../types/warehouse';
 import { calculateLoadSummary } from '../utils/calculations';
 import { downloadCsvFile, generateDdtPdf } from '../utils/businessPdfGenerator';
+import { translateDdtForPrint, usePrintLanguage } from '../utils/printLanguage';
+import { PrintLanguageSelector } from './PrintLanguageSelector';
 
 interface DdtDocumentsAppProps {
   documents: DdtDocument[];
@@ -404,10 +406,22 @@ export const DdtDocumentsApp: React.FC<DdtDocumentsAppProps> = ({
     showNotice('DDT eliminato.');
   };
 
-  const handleDownloadPdf = (ddt: DdtDocument) => {
-    const pdf = generateDdtPdf(ddt);
-    pdf.save(`${ddt.number.replace(/[^A-Za-z0-9_-]/g, '_')}.pdf`);
-    showNotice(`PDF ${ddt.number} scaricato.`);
+  const [printLang, setPrintLang] = usePrintLanguage();
+  const [isTranslatingPdf, setIsTranslatingPdf] = useState(false);
+
+  const handleDownloadPdf = async (ddt: DdtDocument) => {
+    setIsTranslatingPdf(true);
+    try {
+      const prepared = printLang === 'it' ? ddt : await translateDdtForPrint(ddt, printLang);
+      const pdf = generateDdtPdf(prepared, printLang);
+      const langSuffix = printLang === 'it' ? '' : `_${printLang.toUpperCase()}`;
+      pdf.save(`${ddt.number.replace(/[^A-Za-z0-9_-]/g, '_')}${langSuffix}.pdf`);
+      showNotice(
+        `PDF ${ddt.number} scaricato${printLang !== 'it' ? ` (${printLang.toUpperCase()})` : ''}.`
+      );
+    } finally {
+      setIsTranslatingPdf(false);
+    }
   };
 
   const handleExportCsv = () => {
@@ -865,15 +879,23 @@ export const DdtDocumentsApp: React.FC<DdtDocumentsAppProps> = ({
                       {selectedDoc.recipientName}
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <PrintLanguageSelector
+                      value={printLang}
+                      onChange={setPrintLang}
+                      isTranslating={isTranslatingPdf}
+                      variant="light"
+                      label="PDF"
+                    />
                     <button
                       type="button"
+                      disabled={isTranslatingPdf}
                       onClick={() => handleDownloadPdf(selectedDoc)}
-                      title="Scarica PDF A4"
-                      className="px-2.5 py-1.5 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg flex items-center gap-1.5 cursor-pointer"
+                      title="Scarica PDF A4 nella lingua selezionata"
+                      className="px-2.5 py-1.5 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-50 rounded-lg flex items-center gap-1.5 cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      PDF
+                      {isTranslatingPdf ? 'Trad...' : 'PDF'}
                     </button>
                     <button
                       type="button"

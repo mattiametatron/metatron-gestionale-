@@ -27,7 +27,8 @@ export type TutorialContextId =
   | 'purchase_orders'
   | 'timini_print'
   | 'pallet_truck_scanner'
-  | 'excel_checklist_merger';
+  | 'excel_checklist_merger'
+  | 'ai_order_autopilot';
 
 export interface TutorialStep {
   title: string;
@@ -500,6 +501,25 @@ export const APP_TUTORIALS: Record<TutorialContextId, AppTutorialDefinition> = {
       {
         title: 'Riscrittura automatica senza copia-incolla',
         body: 'Tutti i materiali mancanti nel primo file vengono aggiunti automaticamente in una sola Check-List pulita da scaricare in Excel/PDF o inviare subito alla commessa attiva.',
+      },
+    ],
+  },
+  ai_order_autopilot: {
+    id: 'ai_order_autopilot',
+    appTitle: 'Autopilota Preventivi & Commesse AI',
+    subtitle: 'Da WhatsApp, Email o PDF a Preventivo, Scorte, Riordini e Piano Camion in 10 secondi',
+    steps: [
+      {
+        title: 'Incolla un messaggio o trascina un PDF / foto',
+        body: 'Copia la richiesta del cliente da WhatsApp o Email (anche disordinata) oppure trascina un PDF o screenshot. L’AI riconosce ogni articolo collegandolo al tuo catalogo reale.',
+      },
+      {
+        title: 'Controlla margini, scorte e piano bancali live',
+        body: 'Regola ricarico, costi e trasporto in tempo reale: l’app calcola automaticamente cosa è pronto in magazzino, cosa manca da ordinare e quanti bancali EPAL servono sul camion.',
+      },
+      {
+        title: 'Conferma & Lancia in Produzione in 1 clic',
+        body: 'Esporta il Preventivo PDF A4, copia la risposta per il cliente e genera in un colpo solo Commessa, Piano Camion 3D e bozze Ordini Fornitori per i soli articoli mancanti.',
       },
     ],
   },

@@ -6,6 +6,8 @@ import {
   METATRON_QR_COMMANDS,
   QrCommandDefinition,
 } from '../utils/qrCommandSheet';
+import { usePrintLanguage } from '../utils/printLanguage';
+import { PrintLanguageSelector } from './PrintLanguageSelector';
 
 interface QrCommandSheetModalProps {
   isOpen: boolean;
@@ -18,6 +20,7 @@ export const QrCommandSheetModal: React.FC<QrCommandSheetModalProps> = ({
 }) => {
   const [qrUrls, setQrUrls] = useState<Record<string, string>>({});
   const [downloading, setDownloading] = useState(false);
+  const [printLang, setPrintLang] = usePrintLanguage();
 
   useEffect(() => {
     if (!isOpen) return;
@@ -51,7 +54,7 @@ export const QrCommandSheetModal: React.FC<QrCommandSheetModalProps> = ({
   const handleDownloadPdf = async () => {
     setDownloading(true);
     try {
-      await downloadQrCommandSheetPdf();
+      await downloadQrCommandSheetPdf(printLang);
     } finally {
       setDownloading(false);
     }
@@ -84,7 +87,14 @@ export const QrCommandSheetModal: React.FC<QrCommandSheetModalProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <PrintLanguageSelector
+              value={printLang}
+              onChange={setPrintLang}
+              isTranslating={downloading}
+              variant="light"
+              label="Lingua"
+            />
             <button
               type="button"
               disabled={downloading}

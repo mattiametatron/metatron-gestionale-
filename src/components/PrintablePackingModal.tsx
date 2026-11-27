@@ -16,7 +16,6 @@ import {
   Building2,
   Sparkles,
   Loader2,
-  Bot,
   ExternalLink,
   Download,
   Info,
@@ -26,13 +25,20 @@ import { CargoLoad, ElectronicSignature, StockMovement } from '../types/warehous
 import { LoadSummary, calculateLoadSummary, exportLoadToCSV } from '../utils/calculations';
 import { SignaturePadModal } from './SignaturePadModal';
 import { translateItalianToEnglish } from '../utils/logisticsTranslator';
-import { translateLoadWithAi } from '../utils/aiTranslator';
 import { PrintPortal } from './PrintPortal';
 import {
   generateSelectiveLabelsPDF,
   openPdfBlobInNewTab,
   openTrackingLabelsA4PdfInNewTab,
 } from '../utils/pdfGenerator';
+import {
+  getPrintLanguageOption,
+  localizeStaticPrintText,
+  PrintLanguageCode,
+  translateLoadForPrint,
+  usePrintLanguage,
+} from '../utils/printLanguage';
+import { PrintLanguageSelector } from './PrintLanguageSelector';
 
 interface PrintablePackingModalProps {
   load: CargoLoad;
@@ -65,43 +71,70 @@ export const PrintablePackingModal: React.FC<PrintablePackingModalProps> = ({
   const [pageByPage, setPageByPage] = useState<boolean>(true);
   const [selectedPalletId, setSelectedPalletId] = useState<string>('all');
   const [selectedBoxId, setSelectedBoxId] = useState<string>('all');
-  const [printLanguage, setPrintLanguage] = useState<'it' | 'en'>('it');
+  const [printLanguage, setPrintLanguage] = usePrintLanguage();
 
-  // AI Automatic Translation State
+  // AI Automatic Translation State (cache per lingua)
   const [isAiTranslating, setIsAiTranslating] = useState<boolean>(false);
-  const [aiTranslatedLoad, setAiTranslatedLoad] = useState<CargoLoad | null>(null);
-  const [aiEngineUsed, setAiEngineUsed] = useState<'gemini' | 'offline' | null>(null);
+  const [translatedByLang, setTranslatedByLang] = useState<
+    Partial<Record<PrintLanguageCode, CargoLoad>>
+  >({});
 
-  const isEn = printLanguage === 'en';
-  const t = (itText: string, enText: string) => (isEn ? enText : itText);
-  const tr = (val?: string) => (!val ? '' : isEn ? translateItalianToEnglish(val) : val);
+  const isForeign = printLanguage !== 'it';
+  const aiTranslatedLoad = isForeign ? translatedByLang[printLanguage] || null : null;
 
-  // Quando la lingua inglese è attiva e la traduzione AI è pronta, usa i dati tradotti con AI
-  const load = isEn && aiTranslatedLoad ? aiTranslatedLoad : rawLoad;
+  React.useEffect(() => {
+    if (printLanguage === 'it') return;
+    if (translatedByLang[printLanguage]) return;
+    let active = true;
+    setIsAiTranslating(true);
+    translateLoadForPrint(rawLoad, printLanguage)
+      .then((tLoad) => {
+        if (active) {
+          setTranslatedByLang((prev) => ({ ...prev, [printLanguage]: tLoad }));
+        }
+      })
+      .catch((err) => console.error('Translation error:', err))
+      .finally(() => {
+        if (active) setIsAiTranslating(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [printLanguage, rawLoad]);
+
+  const t = (itText: string, enText: string) => {
+    if (printLanguage === 'it') return itText;
+    if (printLanguage === 'en') return enText;
+    return localizeStaticPrintText(itText, printLanguage);
+  };
+  const tr = (val?: string) => {
+    if (!val) return '';
+    if (printLanguage === 'it') return val;
+    if (aiTranslatedLoad) return val;
+    return printLanguage === 'en'
+      ? translateItalianToEnglish(val)
+      : localizeStaticPrintText(val, printLanguage);
+  };
+
+  // Quando una lingua estera è attiva e la traduzione AI è pronta, usa i dati tradotti con AI
+  const load = isForeign && aiTranslatedLoad ? aiTranslatedLoad : rawLoad;
   const summary = useMemo(() => {
-    if (isEn && aiTranslatedLoad) {
+    if (isForeign && aiTranslatedLoad) {
       return calculateLoadSummary(aiTranslatedLoad);
     }
     return rawSummary;
-  }, [isEn, aiTranslatedLoad, rawSummary]);
+  }, [isForeign, aiTranslatedLoad, rawSummary]);
 
-  const executeAiTranslation = async (targetLang: 'en' | 'it' = 'en') => {
-    if (targetLang === 'it') {
-      setPrintLanguage('it');
-      return;
-    }
-
-    setPrintLanguage('en');
-    if (aiTranslatedLoad) {
-      return aiTranslatedLoad;
-    }
+  const executeAiTranslation = async (targetLang: PrintLanguageCode = 'en') => {
+    setPrintLanguage(targetLang);
+    if (targetLang === 'it') return rawLoad;
+    if (translatedByLang[targetLang]) return translatedByLang[targetLang]!;
 
     setIsAiTranslating(true);
     try {
-      const result = await translateLoadWithAi(rawLoad, 'en');
-      setAiTranslatedLoad(result.translatedLoad);
-      setAiEngineUsed(result.engine);
-      return result.translatedLoad;
+      const tLoad = await translateLoadForPrint(rawLoad, targetLang);
+      setTranslatedByLang((prev) => ({ ...prev, [targetLang]: tLoad }));
+      return tLoad;
     } catch (err) {
       console.error('Translation error:', err);
       return null;
@@ -111,15 +144,14 @@ export const PrintablePackingModal: React.FC<PrintablePackingModalProps> = ({
   };
 
   const handleAiTranslateAndPrint = async () => {
+    const targetLang: PrintLanguageCode = printLanguage === 'it' ? 'en' : printLanguage;
     setIsAiTranslating(true);
-    setPrintLanguage('en');
+    setPrintLanguage(targetLang);
     try {
-      let tLoad = aiTranslatedLoad;
+      let tLoad = translatedByLang[targetLang];
       if (!tLoad) {
-        const res = await translateLoadWithAi(rawLoad, 'en');
-        tLoad = res.translatedLoad;
-        setAiTranslatedLoad(res.translatedLoad);
-        setAiEngineUsed(res.engine);
+        tLoad = await translateLoadForPrint(rawLoad, targetLang);
+        setTranslatedByLang((prev) => ({ ...prev, [targetLang]: tLoad! }));
       }
       setTimeout(() => {
         window.print();
@@ -214,39 +246,14 @@ export const PrintablePackingModal: React.FC<PrintablePackingModalProps> = ({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              {/* Selettore Lingua Documento */}
-              <div className="flex items-center bg-white border border-slate-300 rounded-lg p-0.5 shadow-2xs">
-                <button
-                  type="button"
-                  onClick={() => setPrintLanguage('it')}
-                  className={`px-2.5 py-1 text-xs font-bold rounded cursor-pointer transition-all ${
-                    printLanguage === 'it'
-                      ? 'bg-slate-900 text-white shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                  title="Stampa documento in lingua italiana originale"
-                >
-                  🇮🇹 Italiano
-                </button>
-                <button
-                  type="button"
-                  disabled={isAiTranslating}
-                  onClick={() => executeAiTranslation('en')}
-                  className={`px-2.5 py-1 text-xs font-bold rounded cursor-pointer transition-all flex items-center gap-1 ${
-                    printLanguage === 'en'
-                      ? 'bg-blue-700 text-white shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                  title="Traduce automaticamente tutto il file che stai stampando con AI in lingua inglese per esportazione/dogana"
-                >
-                  {isAiTranslating ? (
-                    <Loader2 className="w-3 h-3 animate-spin text-amber-300" />
-                  ) : (
-                    <Sparkles className="w-3 h-3 text-amber-300" />
-                  )}
-                  🇬🇧 English (AI Export)
-                </button>
-              </div>
+              {/* Selettore Lingua Documento Universale (9 Lingue AI) */}
+              <PrintLanguageSelector
+                value={printLanguage}
+                onChange={(lang) => executeAiTranslation(lang)}
+                isTranslating={isAiTranslating}
+                variant="light"
+                label="Lingua"
+              />
 
               {onOpenPdfTranslator && (
                 <button
@@ -281,7 +288,11 @@ export const PrintablePackingModal: React.FC<PrintablePackingModalProps> = ({
                 ) : (
                   <Sparkles className="w-3.5 h-3.5 text-amber-300" />
                 )}
-                <span>{isAiTranslating ? 'Traduzione AI in corso...' : '✨ Traduci con AI & Stampa'}</span>
+                <span>
+                  {isAiTranslating
+                    ? 'Traduzione AI in corso...'
+                    : `Traduci in ${getPrintLanguageOption(printLanguage === 'it' ? 'en' : printLanguage).shortLabel} & Stampa`}
+                </span>
               </button>
 
               <button
@@ -327,7 +338,9 @@ export const PrintablePackingModal: React.FC<PrintablePackingModalProps> = ({
                 className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer whitespace-nowrap shadow-sm"
               >
                 <Printer className="w-3.5 h-3.5" />
-                {isEn ? 'Print (English)' : 'Stampa Diretta'}
+                {isForeign
+                  ? `Stampa (${getPrintLanguageOption(printLanguage).shortLabel})`
+                  : 'Stampa Diretta'}
               </button>
               <button
                 type="button"
@@ -448,7 +461,7 @@ export const PrintablePackingModal: React.FC<PrintablePackingModalProps> = ({
           </div>
 
           {/* Banner di Stato Traduzione Automatica con AI */}
-          {isEn && (
+          {isForeign && (
             <div className="bg-gradient-to-r from-indigo-950 via-slate-900 to-blue-950 text-white p-3 rounded-xl border border-indigo-700/60 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
               <div className="flex items-center gap-2.5">
                 <div className="w-7 h-7 rounded-lg bg-indigo-600/80 flex items-center justify-center text-amber-300 shrink-0">
@@ -462,19 +475,19 @@ export const PrintablePackingModal: React.FC<PrintablePackingModalProps> = ({
                   <div className="font-extrabold text-amber-300 flex items-center gap-2">
                     <span>
                       {isAiTranslating
-                        ? 'Traduzione Intelligente con AI Gemini in corso...'
-                        : 'Traduzione Automatica AI Attiva su Tutto il File'}
+                        ? `Traduzione AI in ${getPrintLanguageOption(printLanguage).label} in corso...`
+                        : `Traduzione Automatica AI Attiva (${getPrintLanguageOption(printLanguage).label})`}
                     </span>
                     {!isAiTranslating && (
                       <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 uppercase">
-                        {aiEngineUsed === 'gemini' ? 'Google Gemini 3.8 AI' : 'Motore Logistico Locale'}
+                        {getPrintLanguageOption(printLanguage).shortLabel} · {getPrintLanguageOption(printLanguage).nativeName}
                       </span>
                     )}
                   </div>
                   <p className="text-[11px] text-slate-300">
                     {isAiTranslating
-                      ? 'Sto elaborando con l\'Intelligenza Artificiale tutti gli articoli, scatole, bancali e note per il documento di stampa...'
-                      : 'Tutti gli articoli, colli, bancali, descrizioni e note di questo documento sono stati tradotti in lingua Inglese per la stampa.'}
+                      ? 'Sto traducendo con AI tutti gli articoli, scatole, bancali e note per il documento di stampa...'
+                      : `Tutti gli articoli, colli, bancali, descrizioni e note sono stati tradotti in ${getPrintLanguageOption(printLanguage).label} (codici SKU/QR/Barcode invariati).`}
                   </p>
                 </div>
               </div>
@@ -484,8 +497,12 @@ export const PrintablePackingModal: React.FC<PrintablePackingModalProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      setAiTranslatedLoad(null);
-                      executeAiTranslation('en');
+                      setTranslatedByLang((prev) => {
+                        const next = { ...prev };
+                        delete next[printLanguage];
+                        return next;
+                      });
+                      executeAiTranslation(printLanguage);
                     }}
                     className="px-2.5 py-1 rounded bg-indigo-700 hover:bg-indigo-600 text-white font-bold text-[11px] cursor-pointer flex items-center gap-1 shadow-2xs"
                   >
@@ -646,7 +663,7 @@ export const PrintablePackingModal: React.FC<PrintablePackingModalProps> = ({
             {isAiTranslating && (
               <div className="no-print p-4 bg-indigo-50 border-2 border-indigo-300 rounded-xl flex items-center justify-center gap-3 text-indigo-950 font-bold text-xs animate-pulse shadow-xs">
                 <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
-                <span>Traduzione intelligente con Intelligenza Artificiale Gemini in corso... Sto convertendo articoli, colli e distinte in lingua inglese...</span>
+                <span>Traduzione AI in {getPrintLanguageOption(printLanguage).label} in corso... Sto convertendo articoli, colli e distinte...</span>
               </div>
             )}
 
@@ -675,13 +692,13 @@ export const PrintablePackingModal: React.FC<PrintablePackingModalProps> = ({
                     </div>
                   </div>
                   <div className="text-right">
-                    {isEn && (
+                    {isForeign && (
                       <span className="inline-block bg-blue-900 text-white px-2.5 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider mr-2">
-                        🇬🇧 INTERNATIONAL EXPORT VERSION
+                        {getPrintLanguageOption(printLanguage).shortLabel} · INTERNATIONAL EXPORT VERSION
                       </span>
                     )}
                     <div className="text-xs font-mono font-bold text-slate-800">
-                      {new Date().toLocaleDateString(isEn ? 'en-GB' : 'it-IT')} &bull; {new Date().toLocaleTimeString(isEn ? 'en-GB' : 'it-IT', { hour: '2-digit', minute: '2-digit' })}
+                      {new Date().toLocaleDateString(isForeign ? 'en-GB' : 'it-IT')} &bull; {new Date().toLocaleTimeString(isForeign ? 'en-GB' : 'it-IT', { hour: '2-digit', minute: '2-digit' })}
                     </div>
                   </div>
                 </div>
@@ -825,7 +842,7 @@ export const PrintablePackingModal: React.FC<PrintablePackingModalProps> = ({
                               {ps.pallet.code}
                             </td>
                             <td className="p-2.5 font-medium text-slate-800 border-r border-slate-200">
-                              <div className="font-bold text-slate-900">{ps.pallet.label || (isEn ? `Pallet ${idx + 1}` : `Bancale ${idx + 1}`)}</div>
+                              <div className="font-bold text-slate-900">{ps.pallet.label || t(`Bancale ${idx + 1}`, `Pallet ${idx + 1}`)}</div>
                               <div className="text-[10px] font-mono text-slate-500">{ps.pallet.dimensionsCm || '80×120×140 cm'}</div>
                             </td>
                             <td className="p-2.5 font-mono font-bold text-center text-amber-700 border-r border-slate-200 text-sm">

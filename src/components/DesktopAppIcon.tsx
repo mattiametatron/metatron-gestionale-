@@ -531,6 +531,41 @@ export const DesktopAppIcon: React.FC<DesktopAppIconProps> = ({
           </svg>
         );
 
+      /* ---------------- AUTOPILOTA PREVENTIVI & COMMESSE AI ---------------- */
+      case 'ai_order_autopilot':
+        return (
+          <svg viewBox="0 0 64 64" className="w-full h-full block">
+            <defs>
+              <linearGradient id={`${uid}-bg`} x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#1e3a8a" />
+                <stop offset="55%" stopColor="#0f172a" />
+                <stop offset="100%" stopColor="#020617" />
+              </linearGradient>
+              <linearGradient id={`${uid}-gold`} x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#fde047" />
+                <stop offset="100%" stopColor="#f59e0b" />
+              </linearGradient>
+            </defs>
+            <rect width="64" height="64" fill={`url(#${uid}-bg)`} />
+            <circle cx="50" cy="14" r="18" fill="#3b82f6" fillOpacity="0.22" />
+            {/* Chat bubble / client request card */}
+            <rect x="11" y="13" width="26" height="20" rx="5" fill="#e2e8f0" />
+            <rect x="15.5" y="18.5" width="15" height="2.4" rx="1.2" fill="#334155" />
+            <rect x="15.5" y="23.5" width="10" height="2.4" rx="1.2" fill="#64748b" />
+            {/* Resulting Quote + Order sheet */}
+            <rect x="25" y="25" width="28" height="27" rx="5" fill="#ffffff" />
+            <rect x="25" y="25" width="28" height="7" rx="5" fill="#2563eb" />
+            <rect x="25" y="29" width="28" height="3" fill="#2563eb" />
+            <rect x="30" y="36.5" width="17" height="2.5" rx="1.2" fill="#0f172a" fillOpacity="0.8" />
+            <rect x="30" y="42" width="12" height="2.5" rx="1.2" fill="#10b981" />
+            {/* Golden AI Sparkle */}
+            <path
+              d="M47 10 L49.1 15.9 L55 18 L49.1 20.1 L47 26 L44.9 20.1 L39 18 L44.9 15.9 Z"
+              fill={`url(#${uid}-gold)`}
+            />
+          </svg>
+        );
+
       /* ---------------- DDT & BOLLE (Crisp Document + Verified Seal) ---------------- */
       case 'ddt_documents':
         return (

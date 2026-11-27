@@ -63,6 +63,7 @@ import { ClientsSuppliersApp } from './components/ClientsSuppliersApp';
 import { PurchaseOrdersApp } from './components/PurchaseOrdersApp';
 import { TiMiniPrintApp } from './components/TiMiniPrintApp';
 import { PalletTruckScannerApp } from './components/PalletTruckScannerApp';
+import { AiOrderAutopilotApp } from './components/AiOrderAutopilotApp';
 import { ExcelChecklistMergerApp } from './components/ExcelChecklistMergerApp';
 import { TruckLoadPlanner } from './components/TruckLoadPlanner';
 import { SignaturesWorkspace } from './components/SignaturesWorkspace';
@@ -3240,6 +3241,31 @@ export default function App() {
             onImportItemsToLoad={handleImportMergedChecklistItems}
           />
         );
+      case 'ai_order_autopilot':
+        return authUser ? (
+          <AiOrderAutopilotApp
+            inventory={inventory}
+            loads={loads}
+            contacts={crmContacts}
+            purchaseOrders={purchaseOrders}
+            currentUser={authUser}
+            onCreateLoadFromAutopilot={(newLoad) => {
+              setLoads((prev) => {
+                const nextLoads = [newLoad, ...prev];
+                broadcastLoads(nextLoads);
+                return nextLoads;
+              });
+              setActiveLoadId(newLoad.id);
+              showToast(
+                `Commessa AI creata: ${newLoad.code} — ${newLoad.pallets.length} bancali EPAL`
+              );
+            }}
+            onUpdateInventory={handleUpdateInventory}
+            onUpdatePurchaseOrders={handleUpdatePurchaseOrders}
+            onUpdateContacts={handleUpdateCrmContacts}
+            onNavigateToApp={(targetApp) => openApp(targetApp)}
+          />
+        ) : null;
       case 'pallet_weights':
         return (
           <PalletWeightsWorkspace

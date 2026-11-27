@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { applyPrintLanguageToJsPdf, getPrintLanguage } from './printLanguage';
 import { CargoLoad, StockMovement } from '../types/warehouse';
 import {
   buildBarcodeValue,
@@ -443,7 +444,10 @@ export function generateOutboundManifestPdf(
   } = {}
 ): jsPDF {
   const data = buildOutboundManifestData(load, movements, options);
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const doc = applyPrintLanguageToJsPdf(
+    new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' }),
+    getPrintLanguage()
+  );
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 12;

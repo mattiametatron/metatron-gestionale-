@@ -1,6 +1,11 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { DdtDocument, PurchaseOrder } from '../types/warehouse';
+import {
+  applyPrintLanguageToJsPdf,
+  getPrintLanguage,
+  PrintLanguageCode,
+} from './printLanguage';
 
 function formatDateIt(iso?: string): string {
   if (!iso) return '—';
@@ -48,12 +53,18 @@ export function downloadCsvFile(filename: string, headers: string[], rows: unkno
 /**
  * Genera un Documento di Trasporto (D.D.T.) conforme DPR 472/96 in formato A4
  */
-export function generateDdtPdf(ddt: DdtDocument): jsPDF {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4',
-  });
+export function generateDdtPdf(
+  ddt: DdtDocument,
+  lang: PrintLanguageCode = getPrintLanguage()
+): jsPDF {
+  const doc = applyPrintLanguageToJsPdf(
+    new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    }),
+    lang
+  );
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -348,13 +359,17 @@ export function generateDdtPdf(ddt: DdtDocument): jsPDF {
  */
 export function generatePurchaseOrderPdf(
   po: PurchaseOrder,
-  buyerCompany: string
+  buyerCompany: string,
+  lang: PrintLanguageCode = getPrintLanguage()
 ): jsPDF {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4',
-  });
+  const doc = applyPrintLanguageToJsPdf(
+    new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    }),
+    lang
+  );
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -536,3 +551,278 @@ export function generatePurchaseOrderPdf(
 
   return doc;
 }
+
+export interface CommercialQuotePdfPayload {
+  quoteNumber: string;
+  issueDate: string;
+  validUntilDate: string;
+  senderCompany: string;
+  senderEmail?: string;
+  clientName: string;
+  destination: string;
+  projectTitle: string;
+  requestedDeliveryDate?: string;
+  paymentTerms: string;
+  palletsCount: number;
+  boxesCount: number;
+  grossWeightKg: number;
+  recommendedVehicle: string;
+  lines: Array<{
+    sku: string;
+    name: string;
+    unit: string;
+    quantity: number;
+    unitSalePriceEur: number;
+    lineSaleEur: number;
+    availabilityLabel: string;
+  }>;
+  materialsSubtotalEur: number;
+  transportEur: number;
+  taxableSubtotalEur: number;
+  vatPercent: number;
+  vatAmountEur: number;
+  grandTotalEur: number;
+  notes?: string;
+}
+
+/**
+ * Genera un Preventivo Commerciale A4 pronto da inviare al cliente via WhatsApp/Email
+ */
+export function generateQuotePdf(
+  payload: CommercialQuotePdfPayload,
+  lang: PrintLanguageCode = getPrintLanguage()
+): jsPDF {
+  const doc = applyPrintLanguageToJsPdf(
+    new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    }),
+    lang
+  );
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 14;
+  const contentWidth = pageWidth - margin * 2;
+
+  // Testata
+  doc.setFillColor(15, 23, 42);
+  doc.rect(margin, 12, contentWidth, 19, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13.5);
+  doc.text('OFFERTA COMMERCIALE / PREVENTIVO', margin + 4, 20);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.8);
+  doc.setTextColor(203, 213, 225);
+  doc.text(
+    [payload.senderCompany || 'METATRON CaricoStudio', payload.senderEmail]
+      .filter(Boolean)
+      .join(' · '),
+    margin + 4,
+    26.5
+  );
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11.5);
+  doc.text(`N. ${payload.quoteNumber}`, pageWidth - margin - 4, 19.5, { align: 'right' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.text(`Data: ${formatDateIt(payload.issueDate)}`, pageWidth - margin - 4, 26.5, {
+    align: 'right',
+  });
+
+  let y = 35;
+  const boxGap = 4;
+  const halfW = (contentWidth - boxGap) / 2;
+
+  // Box Cliente
+  doc.setDrawColor(203, 213, 225);
+  doc.setFillColor(248, 250, 252);
+  doc.roundedRect(margin, y, halfW, 27, 1.5, 1.5, 'FD');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.2);
+  doc.setTextColor(100, 116, 139);
+  doc.text('SPETT.LE CLIENTE', margin + 3, y + 5);
+
+  doc.setTextColor(15, 23, 42);
+  doc.setFontSize(10);
+  doc.text(payload.clientName || 'Cliente', margin + 3, y + 10.5, { maxWidth: halfW - 6 });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(51, 65, 85);
+  const clientLines = [
+    payload.projectTitle ? `Oggetto: ${payload.projectTitle}` : '',
+    payload.destination ? `Destinazione: ${payload.destination}` : '',
+  ].filter(Boolean);
+  doc.text(clientLines.join('\n'), margin + 3, y + 16, { maxWidth: halfW - 6 });
+
+  // Box Condizioni & Logistica
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(margin + halfW + boxGap, y, halfW, 27, 1.5, 1.5, 'FD');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.2);
+  doc.setTextColor(100, 116, 139);
+  doc.text('CONDIZIONI & CONSEGNA', margin + halfW + boxGap + 3, y + 5);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(15, 23, 42);
+  const condLines = [
+    `Validità offerta: fino al ${formatDateIt(payload.validUntilDate)}`,
+    `Consegna prevista: ${formatDateIt(payload.requestedDeliveryDate)}`,
+    `Pagamento: ${payload.paymentTerms || 'Bonifico 30 gg d.f.'}`,
+    `Trasporto stimato: ${payload.palletsCount} EPAL · ${payload.grossWeightKg.toFixed(0)} kg (${payload.recommendedVehicle})`,
+  ];
+  doc.text(condLines.join('\n'), margin + halfW + boxGap + 3, y + 10, {
+    maxWidth: halfW - 6,
+  });
+
+  y += 32;
+
+  const rows =
+    payload.lines.length > 0
+      ? payload.lines.map((line, idx) => [
+          String(idx + 1),
+          line.sku || '—',
+          line.name,
+          line.availabilityLabel,
+          line.unit || 'pz',
+          String(line.quantity),
+          formatEur(line.unitSalePriceEur),
+          formatEur(line.lineSaleEur),
+        ])
+      : [['—', '—', 'Nessuna voce in preventivo', '—', '—', '0', '€ 0,00', '€ 0,00']];
+
+  autoTable(doc, {
+    startY: y,
+    margin: { left: margin, right: margin },
+    head: [['#', 'SKU', 'Descrizione Articolo', 'Disp.', 'U.M.', 'Q.tà', 'Prezzo Unit.', 'Importo']],
+    body: rows,
+    theme: 'grid',
+    headStyles: {
+      fillColor: [30, 41, 59],
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 7.8,
+      cellPadding: 2.3,
+    },
+    bodyStyles: {
+      fontSize: 7.8,
+      textColor: [15, 23, 42],
+      cellPadding: 2.2,
+    },
+    columnStyles: {
+      0: { cellWidth: 8, halign: 'center' },
+      1: { cellWidth: 25, font: 'courier', fontStyle: 'bold' },
+      2: { cellWidth: 'auto' },
+      3: { cellWidth: 19, halign: 'center' },
+      4: { cellWidth: 11, halign: 'center' },
+      5: { cellWidth: 14, halign: 'right', fontStyle: 'bold' },
+      6: { cellWidth: 22, halign: 'right' },
+      7: { cellWidth: 24, halign: 'right', fontStyle: 'bold' },
+    },
+  });
+
+  const afterTableY = (doc as any).lastAutoTable?.finalY
+    ? Number((doc as any).lastAutoTable.finalY) + 6
+    : y + 40;
+
+  let blockY = afterTableY;
+  if (blockY > pageHeight - 62) {
+    doc.addPage();
+    blockY = 20;
+  }
+
+  // Note a sinistra
+  if (payload.notes) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text('NOTE COMMERCIALI & LOGISTICHE', margin, blockY + 4.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(51, 65, 85);
+    doc.text(payload.notes, margin, blockY + 9.5, { maxWidth: contentWidth - 84 });
+  }
+
+  // Riepilogo economico a destra
+  const totalsW = 78;
+  const totalsX = margin + contentWidth - totalsW;
+  doc.setDrawColor(203, 213, 225);
+  doc.setFillColor(248, 250, 252);
+  doc.roundedRect(totalsX, blockY, totalsW, 32, 1.5, 1.5, 'FD');
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(71, 85, 105);
+  doc.text('Subtotale merci:', totalsX + 3.5, blockY + 6);
+  doc.setTextColor(15, 23, 42);
+  doc.text(formatEur(payload.materialsSubtotalEur), totalsX + totalsW - 3.5, blockY + 6, {
+    align: 'right',
+  });
+
+  doc.setTextColor(71, 85, 105);
+  doc.text('Trasporto e imballo:', totalsX + 3.5, blockY + 11.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text(formatEur(payload.transportEur), totalsX + totalsW - 3.5, blockY + 11.5, {
+    align: 'right',
+  });
+
+  doc.setTextColor(71, 85, 105);
+  doc.text(`IVA (${payload.vatPercent}%):`, totalsX + 3.5, blockY + 17);
+  doc.setTextColor(15, 23, 42);
+  doc.text(formatEur(payload.vatAmountEur), totalsX + totalsW - 3.5, blockY + 17, {
+    align: 'right',
+  });
+
+  doc.setDrawColor(203, 213, 225);
+  doc.line(totalsX + 3, blockY + 20.5, totalsX + totalsW - 3, blockY + 20.5);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text('TOTALE PREVENTIVO:', totalsX + 3.5, blockY + 27.5);
+  doc.text(formatEur(payload.grandTotalEur), totalsX + totalsW - 3.5, blockY + 27.5, {
+    align: 'right',
+  });
+
+  // Riquadro accettazione cliente
+  const signY = Math.max(blockY + 38, pageHeight - 36);
+  if (signY < pageHeight - 16) {
+    doc.setDrawColor(203, 213, 225);
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(margin, signY, contentWidth, 20, 1.5, 1.5, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text('TIMBRO E FIRMA PER ACCETTAZIONE OFFERTA', margin + 3, signY + 5);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.text('Data: ____ / ____ / ________', margin + 3, signY + 15.5);
+    doc.text('Firma cliente: ____________________________________', margin + 72, signY + 15.5);
+  }
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(148, 163, 184);
+  doc.text(
+    `METATRON CaricoStudio · Preventivo ${payload.quoteNumber} · Generato il ${formatDateIt(
+      new Date().toISOString().slice(0, 16)
+    )}`,
+    pageWidth / 2,
+    pageHeight - 8,
+    { align: 'center' }
+  );
+
+  return doc;
+}
+

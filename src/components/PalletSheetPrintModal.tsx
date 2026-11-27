@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Printer,
   X,
@@ -14,12 +14,18 @@ import {
   Info,
 } from 'lucide-react';
 import { CargoLoad } from '../types/warehouse';
-import { PalletSummary } from '../utils/calculations';
+import { calculateLoadSummary, PalletSummary } from '../utils/calculations';
 import { PrintPortal } from './PrintPortal';
 import {
   generatePalletSheetsPDF,
   openPdfBlobInNewTab,
 } from '../utils/pdfGenerator';
+import {
+  PrintLanguageCode,
+  translateLoadForPrint,
+  usePrintLanguage,
+} from '../utils/printLanguage';
+import { PrintLanguageSelector } from './PrintLanguageSelector';
 
 interface PalletSheetPrintModalProps {
   load: CargoLoad;
@@ -29,12 +35,41 @@ interface PalletSheetPrintModalProps {
 }
 
 export const PalletSheetPrintModal: React.FC<PalletSheetPrintModalProps> = ({
-  load,
-  palletSummaries,
+  load: rawLoad,
+  palletSummaries: rawPalletSummaries,
   initialPalletId = 'all',
   onClose,
 }) => {
   const [selectedPalletId, setSelectedPalletId] = useState<string>(initialPalletId);
+  const [printLang, setPrintLang] = usePrintLanguage();
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [translatedByLang, setTranslatedByLang] = useState<
+    Partial<Record<PrintLanguageCode, CargoLoad>>
+  >({});
+
+  useEffect(() => {
+    if (printLang === 'it' || translatedByLang[printLang]) return;
+    let active = true;
+    setIsTranslating(true);
+    translateLoadForPrint(rawLoad, printLang)
+      .then((tLoad) => {
+        if (active) setTranslatedByLang((prev) => ({ ...prev, [printLang]: tLoad }));
+      })
+      .finally(() => {
+        if (active) setIsTranslating(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [printLang, rawLoad]);
+
+  const load = printLang !== 'it' && translatedByLang[printLang] ? translatedByLang[printLang]! : rawLoad;
+  const palletSummaries = useMemo(() => {
+    if (printLang !== 'it' && translatedByLang[printLang]) {
+      return calculateLoadSummary(translatedByLang[printLang]!).palletSummaries;
+    }
+    return rawPalletSummaries;
+  }, [printLang, translatedByLang, rawPalletSummaries]);
 
   const displayedSummaries =
     selectedPalletId === 'all'
@@ -55,7 +90,8 @@ export const PalletSheetPrintModal: React.FC<PalletSheetPrintModalProps> = ({
   const handleDownloadPdf = () => {
     const doc = generatePalletSheetsPDF(load, displayedSummaries);
     const cleanCode = (load.code || 'COMMESSA').replace(/[^a-zA-Z0-9_-]/g, '_');
-    doc.save(`Schede_Bancali_${cleanCode}.pdf`);
+    const langSuffix = printLang === 'it' ? '' : `_${printLang.toUpperCase()}`;
+    doc.save(`Schede_Bancali_${cleanCode}${langSuffix}.pdf`);
   };
 
   return (
@@ -84,7 +120,14 @@ export const PalletSheetPrintModal: React.FC<PalletSheetPrintModalProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <PrintLanguageSelector
+              value={printLang}
+              onChange={setPrintLang}
+              isTranslating={isTranslating}
+              variant="dark"
+              label="Lingua"
+            />
             {/* Selettore Bancale Singolo o Tutti */}
             <div className="flex items-center gap-1.5 bg-slate-800 px-2.5 py-1 rounded-xl border border-slate-700">
               <span className="text-xs text-slate-300 font-semibold">Stampa:</span>

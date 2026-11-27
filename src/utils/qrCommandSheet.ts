@@ -1,5 +1,11 @@
 import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
+import {
+  applyPrintLanguageToJsPdf,
+  getPrintLanguage,
+  PrintLanguageCode,
+  translateTextsForPrint,
+} from './printLanguage';
 
 export type QrCommandGroup = 'azione' | 'conferma' | 'quantita';
 
@@ -163,9 +169,39 @@ export async function generateQrDataUrl(text: string, width = 260): Promise<stri
 /**
  * Genera e scarica la Plancia A4 "QR Comandi Rapidi da Banco" pronta da stampare e attaccare allo scaffale/banco.
  */
-export async function downloadQrCommandSheetPdf(): Promise<void> {
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+export async function downloadQrCommandSheetPdf(
+  lang: PrintLanguageCode = getPrintLanguage()
+): Promise<void> {
+  const doc = applyPrintLanguageToJsPdf(
+    new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' }),
+    lang
+  );
   const pageW = 210;
+
+  let localizedCommands = METATRON_QR_COMMANDS;
+  let instructionLine =
+    "1. Spara l'articolo (anche più volte)   ·   2. Spara CARICO / SCARICO o la quantità   ·   3. Spara CONFERMA";
+  let qtyHeading = 'QUANTITÀ & MOLTIPLICATORI RAPIDI';
+
+  if (lang !== 'it') {
+    const textsToTranslate = [
+      instructionLine,
+      qtyHeading,
+      ...METATRON_QR_COMMANDS.flatMap((c) => [c.title, c.subtitle]),
+    ];
+    const translated = await translateTextsForPrint(
+      textsToTranslate,
+      lang,
+      'warehouse barcode scanner workbench quick command labels (keep short, preserve symbols like +, -, ×)'
+    );
+    instructionLine = translated[0] || instructionLine;
+    qtyHeading = translated[1] || qtyHeading;
+    localizedCommands = METATRON_QR_COMMANDS.map((c, idx) => ({
+      ...c,
+      title: translated[2 + idx * 2] || c.title,
+      subtitle: translated[2 + idx * 2 + 1] || c.subtitle,
+    }));
+  }
 
   // Intestazione pulita ad alto contrasto
   doc.setFillColor(15, 23, 42);
@@ -177,13 +213,9 @@ export async function downloadQrCommandSheetPdf(): Promise<void> {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9.5);
   doc.setTextColor(226, 232, 240);
-  doc.text(
-    '1. Spara l\'articolo (anche più volte)   ·   2. Spara CARICO / SCARICO o la quantità   ·   3. Spara CONFERMA',
-    12,
-    19.5
-  );
+  doc.text(instructionLine, 12, 19.5);
 
-  // Pre-genera tutti i QR in alta risoluzione
+  // Pre-genera tutti i QR in alta risoluzione (codice QR interno SEMPRE invariato!)
   const qrImages = new Map<string, string>();
   for (const def of METATRON_QR_COMMANDS) {
     const url = await generateQrDataUrl(def.code, 320);
@@ -201,7 +233,7 @@ export async function downloadQrCommandSheetPdf(): Promise<void> {
   };
 
   // Sezione 1: 4 Comandi Principali GRANDI (2x2) -> leggibili anche da 40 cm di distanza
-  const primaryCommands = METATRON_QR_COMMANDS.filter(
+  const primaryCommands = localizedCommands.filter(
     (c) => c.group === 'azione' || c.group === 'conferma'
   );
   const startY = 33;
@@ -253,9 +285,9 @@ export async function downloadQrCommandSheetPdf(): Promise<void> {
   doc.setTextColor(15, 23, 42);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  doc.text('QUANTITÀ & MOLTIPLICATORI RAPIDI', marginX, qtyStartY);
+  doc.text(qtyHeading, marginX, qtyStartY);
 
-  const qtyCommands = METATRON_QR_COMMANDS.filter((c) => c.group === 'quantita');
+  const qtyCommands = localizedCommands.filter((c) => c.group === 'quantita');
   const smallW = 43.5;
   const smallH = 54;
   const smallGapX = 4;

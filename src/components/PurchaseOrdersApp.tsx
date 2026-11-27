@@ -25,6 +25,8 @@ import {
   WarehouseStockItem,
 } from '../types/warehouse';
 import { downloadCsvFile, generatePurchaseOrderPdf } from '../utils/businessPdfGenerator';
+import { translatePurchaseOrderForPrint, usePrintLanguage } from '../utils/printLanguage';
+import { PrintLanguageSelector } from './PrintLanguageSelector';
 import {
   computePredictiveStockForecast,
   PredictiveStockAlert,
@@ -517,10 +519,27 @@ export const PurchaseOrdersApp: React.FC<PurchaseOrdersAppProps> = ({
     );
   };
 
-  const handleDownloadPdf = (po: PurchaseOrder) => {
-    const pdf = generatePurchaseOrderPdf(po, currentUser.company || 'METATRON CaricoStudio');
-    pdf.save(`${po.number.replace(/[^A-Za-z0-9_-]/g, '_')}.pdf`);
-    showNotice(`PDF ${po.number} scaricato.`);
+  const [printLang, setPrintLang] = usePrintLanguage();
+  const [isTranslatingPdf, setIsTranslatingPdf] = useState(false);
+
+  const handleDownloadPdf = async (po: PurchaseOrder) => {
+    setIsTranslatingPdf(true);
+    try {
+      const prepared =
+        printLang === 'it' ? po : await translatePurchaseOrderForPrint(po, printLang);
+      const pdf = generatePurchaseOrderPdf(
+        prepared,
+        currentUser.company || 'METATRON CaricoStudio',
+        printLang
+      );
+      const langSuffix = printLang === 'it' ? '' : `_${printLang.toUpperCase()}`;
+      pdf.save(`${po.number.replace(/[^A-Za-z0-9_-]/g, '_')}${langSuffix}.pdf`);
+      showNotice(
+        `PDF ${po.number} scaricato${printLang !== 'it' ? ` (${printLang.toUpperCase()})` : ''}.`
+      );
+    } finally {
+      setIsTranslatingPdf(false);
+    }
   };
 
   const handleDeleteOrder = (poId: string) => {
@@ -1126,14 +1145,22 @@ export const PurchaseOrdersApp: React.FC<PurchaseOrdersAppProps> = ({
                         {selectedOrder.supplierName}
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <PrintLanguageSelector
+                        value={printLang}
+                        onChange={setPrintLang}
+                        isTranslating={isTranslatingPdf}
+                        variant="light"
+                        label="PDF"
+                      />
                       <button
                         type="button"
+                        disabled={isTranslatingPdf}
                         onClick={() => handleDownloadPdf(selectedOrder)}
-                        className="px-2.5 py-1.5 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg flex items-center gap-1.5 cursor-pointer"
+                        className="px-2.5 py-1.5 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-50 rounded-lg flex items-center gap-1.5 cursor-pointer"
                       >
                         <Download className="w-3.5 h-3.5" />
-                        PDF
+                        {isTranslatingPdf ? 'Trad...' : 'PDF'}
                       </button>
                       <button
                         type="button"
